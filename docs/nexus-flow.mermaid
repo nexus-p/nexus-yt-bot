@@ -1,0 +1,19 @@
+flowchart TD
+    A[User sends URL or search query in Telegram] --> B[Bot Core - Hiro]
+    B --> C[Extraction - Precious]
+    C --> D{Captions available on YouTube?}
+    D -->|Yes| E[Pull existing captions]
+    D -->|No| F[Agent transcribes audio - Whisper via Groq]
+    E --> G[Transcript - timestamped segments]
+    F --> G
+    G --> H[Passed to AI Layer - Alpha]
+    H --> I[System prompt: summarize this transcript]
+    I --> J[Summary generated]
+    J --> B
+    B --> K[Bot sends summary back to user]
+
+    style B fill:#4a4a8a,color:#fff
+    style C fill:#4a6a4a,color:#fff
+    style H fill:#8a4a6a,color:#fff
+    style A fill:#333,color:#fff
+    style K fill:#333,color:#fff
