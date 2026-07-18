@@ -20,12 +20,16 @@ import type { VideoData, SummaryResult } from "../types/index.js";
 /**
  * Escape Telegram Markdown special characters in a text string.
  *
- * Escapes: _ * `  (the characters that affect inline formatting in
- * Telegram's legacy Markdown mode). Apply this to any dynamic/
- * externally-sourced text before embedding it in a Markdown message.
+ * Escapes: _ * ` [ ]  — covers inline formatting (bold, italic, code) and
+ * link/button syntax (square brackets). Without escaping brackets, a
+ * malicious or accidental pattern like [click here](http://evil.com) would
+ * render as a live clickable link even after other characters are escaped.
+ *
+ * Apply this to any dynamic/externally-sourced text before embedding it in
+ * a Telegram Markdown message.
  */
 export function escapeMarkdown(text: string): string {
-  return text.replace(/[_*`]/g, "\\$&");
+  return text.replace(/[_*\[\]`]/g, "\\$&");
 }
 
 /**
