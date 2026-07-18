@@ -7,6 +7,27 @@
 
 import type { VideoData, SummaryResult } from "../types/index.js";
 
+// ---------------------------------------------------------------------------
+// Markdown escaping helpers
+//
+// Telegram's Markdown (legacy mode) treats these characters as formatting:
+//   _  → italic     *  → bold     `  → inline code
+// When they appear in user-supplied or external text (video titles, AI
+// summaries, etc.), they can break the bot's own formatting or alter the
+// message appearance unexpectedly. Escape them before interpolation.
+// ---------------------------------------------------------------------------
+
+/**
+ * Escape Telegram Markdown special characters in a text string.
+ *
+ * Escapes: _ * `  (the characters that affect inline formatting in
+ * Telegram's legacy Markdown mode). Apply this to any dynamic/
+ * externally-sourced text before embedding it in a Markdown message.
+ */
+export function escapeMarkdown(text: string): string {
+  return text.replace(/[_*`]/g, "\\$&");
+}
+
 /**
  * Format a successful pipeline result into a Telegram-friendly message.
  *
@@ -18,10 +39,15 @@ export function formatSuccessMessage(
   video: VideoData,
   summary: SummaryResult
 ): string {
-  // Format duration from seconds to mm:ss
-  const minutes = Math.floor(video.duration_seconds / 60);
-  const seconds = video.duration_seconds % 60;
-  const durationStr = `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  // Format duration from seconds to h:mm:ss or mm:ss
+  const hours = Math.floor(video.duration_seconds / 3600);
+  const remaining = video.duration_seconds % 3600;
+  const minutes = Math.floor(remaining / 60);
+  const seconds = remaining % 60;
+  const durationStr =
+    hours > 0
+      ? `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`
+      : `${minutes}:${seconds.toString().padStart(2, "0")}`;
 
   // Format view count with commas
   const viewsStr = video.view_count.toLocaleString();
@@ -32,17 +58,23 @@ export function formatSuccessMessage(
       ? "📝 YouTube captions"
       : "🎤 Whisper transcription (Groq)";
 
+  // Escape user-facing text to prevent Markdown injection
+  const safeTitle = escapeMarkdown(video.title);
+  const safeChannel = escapeMarkdown(video.channel);
+  const safeSummary = escapeMarkdown(summary.summary);
+  const safeMode = escapeMarkdown(summary.mode);
+
   return [
-    `**${video.title}**`,
-    `📺 ${video.channel}  ·  ${durationStr}  ·  ${viewsStr} views`,
+    `**${safeTitle}**`,
+    `📺 ${safeChannel}  ·  ${durationStr}  ·  ${viewsStr} views`,
     `📅 ${new Date(video.upload_date).toLocaleDateString()}`,
     `_Source: ${sourceLabel}_`,
     "",
     "---",
     "",
-    summary.summary,
+    safeSummary,
     "",
-    `_Mode: ${summary.mode}_`,
+    `_Mode: ${safeMode}_`,
   ].join("\n");
 }
 

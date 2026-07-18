@@ -9,6 +9,9 @@
 //   npm start            # production (requires `npm run build` first)
 // =============================================================================
 
+// Load .env before anything else reads process.env
+import "dotenv/config";
+
 import { Bot, type Context } from "grammy";
 import { handleMessage } from "./handlers/message.js";
 
@@ -65,10 +68,10 @@ bot.on("message:text", handleMessage);
 // Start polling
 // ---------------------------------------------------------------------------
 
-const BOT_USERNAME = BOT_TOKEN.split(":")[0] ?? "unknown";
+const BOT_ID = BOT_TOKEN.split(":")[0] ?? "unknown";
 
 console.log(`[bot-core] Starting NEXUS YT Bot...`);
-console.log(`[bot-core] Bot ID: ${BOT_USERNAME}`);
+console.log(`[bot-core] Bot ID: ${BOT_ID}`);
 console.log(`[bot-core] Listening for messages...`);
 
 // Start the bot (long-polling). In production you may want webhooks instead.
