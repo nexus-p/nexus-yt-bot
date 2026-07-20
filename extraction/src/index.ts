@@ -8,22 +8,36 @@ export async function getVideoData(
   url: string
 ): Promise<Result<VideoData>> {
 
+
   try {
 
-    const videoId = extractVideoId(url);
+
+    const videoId =
+      extractVideoId(url);
+
 
 
     if (!videoId) {
+
       return {
+
         error: true,
-        reason: "Invalid YouTube URL",
-        code: "INVALID_URL"
+
+        reason:
+          "Invalid YouTube URL",
+
+        code:
+          "INVALID_URL"
+
       };
+
     }
+
 
 
     const metadata =
       await getMetadata(videoId);
+
 
 
     const transcriptResult =
@@ -33,16 +47,23 @@ export async function getVideoData(
 
     return {
 
+
       title:
-        metadata.title ?? "Unknown title",
+        metadata.title ??
+        "Unknown title",
+
 
 
       channel:
-        metadata.channel ?? "Unknown channel",
+        metadata.channel ??
+        "Unknown channel",
+
 
 
       duration_seconds:
-        metadata.duration_seconds ?? 0,
+        metadata.duration_seconds ??
+        0,
+
 
 
       upload_date:
@@ -50,29 +71,39 @@ export async function getVideoData(
         new Date().toISOString(),
 
 
+
       view_count:
-        metadata.view_count ?? 0,
+        metadata.view_count ??
+        0,
+
 
 
       description:
-        metadata.description ?? "",
+        metadata.description ??
+        "",
+
 
 
       thumbnail_url:
-        metadata.thumbnail_url ?? "",
+        metadata.thumbnail_url ??
+        "",
+
 
 
       transcript_source:
-        "captions",
+        transcriptResult.source,
+
 
 
       transcript:
-        transcriptResult
+        transcriptResult.transcript
+
 
     };
 
 
   } catch(error) {
+
 
     return {
 

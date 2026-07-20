@@ -1,14 +1,29 @@
 import { YoutubeTranscript } from "youtube-transcript";
 import type { TranscriptSegment } from "./types.js";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 import Groq from "groq-sdk";
 import fs from "fs";
+import os from "os";
+import path from "path";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+
+/**
+ * Transcript result returned to extraction layer.
+ *
+ * source tells bot-core whether the transcript came from:
+ * - YouTube captions
+ * - Whisper AI agent fallback
+ */
+export type TranscriptResult = {
+  source: "captions" | "agent";
+  transcript: TranscriptSegment[];
+};
 
 
 /**
@@ -16,96 +31,210 @@ const execAsync = promisify(exec);
  */
 async function getCaptionTranscript(
   videoId: string
-): Promise<TranscriptSegment[]> {
+): Promise<TranscriptResult> {
 
   const transcript =
     await YoutubeTranscript.fetchTranscript(videoId);
 
 
-  return transcript.map((item) => ({
-    start: item.offset / 1000,
-    end: (item.offset + item.duration) / 1000,
-    text: item.text,
-  }));
+  return {
+
+    source: "captions",
+
+    transcript:
+      transcript.map((item) => ({
+
+        start:
+          item.offset / 1000,
+
+        end:
+          (item.offset + item.duration) / 1000,
+
+        text:
+          item.text,
+
+      }))
+
+  };
 }
 
 
 /**
- * Fallback: Download audio and transcribe using Groq Whisper
+ * Fallback:
+ * Download audio and transcribe using Groq Whisper
  */
 async function getWhisperTranscript(
   videoId: string
-): Promise<TranscriptSegment[]> {
+): Promise<TranscriptResult> {
+
+
+  console.log(
+    "No captions found. Using Whisper fallback..."
+  );
+
+
+  const tempDir =
+    os.tmpdir();
+
+
+  const audioFile =
+    path.join(
+      tempDir,
+      `${videoId}.mp3`
+    );
+
 
   const url =
     `https://www.youtube.com/watch?v=${videoId}`;
 
 
-  const audioFile =
-    `./${videoId}.mp3`;
+
+  try {
 
 
-  console.log("No captions found. Using Whisper fallback...");
+    /*
+      Security:
+      execFile does not execute through a shell.
+
+      Prevents command injection attacks.
+    */
+
+    await execFileAsync(
+
+      "yt-dlp",
+
+      [
+
+        "-x",
+
+        "--audio-format",
+
+        "mp3",
+
+        "-o",
+
+        audioFile,
+
+        url
+
+      ]
+
+    );
 
 
-  await execAsync(
-    `yt-dlp -x --audio-format mp3 -o ${audioFile} ${url}`
-  );
+
+    const groq =
+      new Groq({
+
+        apiKey:
+          process.env.GROQ_API_KEY,
+
+      });
 
 
-  const groq =
-    new Groq({
-      apiKey: process.env.GROQ_API_KEY,
-    });
+
+    const result =
+      await groq.audio.transcriptions.create({
+
+        file:
+          fs.createReadStream(audioFile),
+
+        model:
+          "whisper-large-v3",
+
+        response_format:
+          "verbose_json",
+
+      }) as any;
 
 
-  const result = await groq.audio.transcriptions.create({
-    file: fs.createReadStream(audioFile),
 
-    model: "whisper-large-v3",
+    return {
 
-    response_format: "verbose_json",
-  }) as any;
+      source:
+        "agent",
 
 
-  if (fs.existsSync(audioFile)) {
-    fs.unlinkSync(audioFile);
+      transcript:
+        result.segments.map(
+          (segment: any) => ({
+
+            start:
+              segment.start,
+
+            end:
+              segment.end,
+
+            text:
+              segment.text,
+
+          })
+        )
+
+    };
+
+
+  } finally {
+
+
+    /*
+      Always remove temporary files.
+
+      Runs even if:
+      - yt-dlp fails
+      - Groq fails
+      - network fails
+    */
+
+    if (
+      fs.existsSync(audioFile)
+    ) {
+
+      fs.unlinkSync(audioFile);
+
+    }
+
   }
 
-
-  return result.segments.map((segment: any) => ({
-    start: segment.start,
-    end: segment.end,
-    text: segment.text,
-  }));
 }
 
 
 /**
- * Main transcript function
+ * Main transcript function.
  *
  * Captions first.
  * Whisper fallback second.
  */
 export async function getTranscript(
   videoId: string
-): Promise<TranscriptSegment[]> {
+): Promise<TranscriptResult> {
+
 
   try {
 
-    console.log("Trying YouTube captions...");
 
-    return await getCaptionTranscript(videoId);
+    console.log(
+      "Trying YouTube captions..."
+    );
 
 
-  } catch (error) {
+    return await getCaptionTranscript(
+      videoId
+    );
+
+
+  } catch {
+
 
     console.log(
       "Captions unavailable, switching to Whisper..."
     );
 
 
-    return await getWhisperTranscript(videoId);
+    return await getWhisperTranscript(
+      videoId
+    );
 
   }
+
 }
