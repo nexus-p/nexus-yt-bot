@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "description": "NEXUS YT Bot — AI summarization layer (Alpha)",
   "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",

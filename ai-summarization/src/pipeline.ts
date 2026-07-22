@@ -1,3 +1,10 @@
+// Load .env from repo root before anything else reads process.env
+import { config } from "dotenv";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+const __dirname = dirname(fileURLToPath(import.meta.url));
+config({ path: resolve(__dirname, "../../.env") });
+
 import Groq from "groq-sdk";
 import type {
   TranscriptSegment,

@@ -7,8 +7,11 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import dotenv from "dotenv";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
-dotenv.config();
+dotenv.config({ path: resolve(__dirname, "../../.env") });
 
 const execFileAsync = promisify(execFile);
 

@@ -13,8 +13,8 @@
 // pipeline catches it and returns cleanly — no uncaught exceptions.
 // =============================================================================
 
-import { getVideoData } from "../mocks/getVideoData.js";
-import { summarize } from "../mocks/summarize.js";
+import { getVideoData } from "@nexus-p/extraction";
+import { summarize } from "@nexus-p/ai-summarization";
 import type { VideoData, SummaryResult, ErrorResponse } from "../types/index.js";
 import { isErrorResponse } from "../types/index.js";
 
