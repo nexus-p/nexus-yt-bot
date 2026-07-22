@@ -10,7 +10,16 @@ import type {
   Result,
 } from "./types.js";
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+let groqClient: Groq | null = null;
+
+function getGroqClient(): Groq | null {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) return null;
+  if (!groqClient) {
+    groqClient = new Groq({ apiKey });
+  }
+  return groqClient;
+}
 
 const TOKEN_LIMIT = 6000;
 const CHUNK_SEGMENT_MAX = 80;
@@ -31,10 +40,15 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+const NOISE_PATTERN = /^(music|applause|laughter|silence|inaudible|cheering|applause and laughter|background noise|crowd noise|static|beep|coughing)$/i;
+
 function preprocessTranscript(segments: TranscriptSegment[]): TranscriptSegment[] {
   const cleaned = segments
     .map((s) => ({ ...s, text: s.text.replace(/[♪#*\[\]]/g, "").trim() }))
-    .filter((s) => s.text.length > 3);
+    .filter((s) => {
+      const t = s.text.toLowerCase();
+      return s.text.length > 3 && !NOISE_PATTERN.test(t);
+    });
 
   if (cleaned.length <= 1) return cleaned;
 
@@ -72,11 +86,11 @@ async function callGroq(
   temperature: number = 0.5,
   maxTokens: number = 1024
 ): Promise<string | null> {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return null;
+  const client = getGroqClient();
+  if (!client) return null;
 
   try {
-    const completion = await groq.chat.completions.create({
+    const completion = await client.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [
         { role: "system", content: systemPrompt },
