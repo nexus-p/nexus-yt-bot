@@ -9,8 +9,13 @@
 //   npm start            # production (requires `npm run build` first)
 // =============================================================================
 
-// Load .env before anything else reads process.env
-import "dotenv/config";
+// Load .env from repo root before anything else reads process.env
+// Uses __dirname relative path so it works regardless of CWD at launch time
+import { config } from "dotenv";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+const __dirname = dirname(fileURLToPath(import.meta.url));
+config({ path: resolve(__dirname, "../../.env") });
 
 import { Bot, type Context } from "grammy";
 import { handleMessage } from "./handlers/message.js";

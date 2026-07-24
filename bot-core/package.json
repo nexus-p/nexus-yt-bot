@@ -12,7 +12,9 @@
   },
   "dependencies": {
     "dotenv": "^16.4.0",
-    "grammy": "^1.34.0"
+    "grammy": "^1.34.0",
+    "@nexus-p/extraction": "*",
+    "@nexus-p/ai-summarization": "*"
   },
   "devDependencies": {
     "tsx": "^4.19.0",

@@ -2,6 +2,7 @@ import type { VideoData, Result } from "./types.js";
 import { extractVideoId } from "./youtube.js";
 import { getMetadata } from "./metadata.js";
 import { getTranscript } from "./transcript.js";
+import { cacheGet, cacheSet } from "./cache.js";
 
 
 export async function getVideoData(
@@ -30,22 +31,28 @@ export async function getVideoData(
           "INVALID_URL"
 
       };
-
     }
 
 
+    // Check cache first — avoids redundant YouTube API calls for repeated URLs
+    const cacheKey = `video:${videoId}`;
+    const cached = cacheGet<VideoData>(cacheKey);
+    if (cached) {
+      console.log(`[extraction] Cache hit for ${videoId}`);
+      return cached;
+    }
+    console.log(`[extraction] Cache miss for ${videoId} — fetching...`);
 
-    const metadata =
-      await getMetadata(videoId);
+
+    // Run metadata and transcript fetches in parallel — they're independent
+    const [metadata, transcriptResult] = await Promise.all([
+      getMetadata(videoId),
+      getTranscript(videoId),
+    ]);
 
 
 
-    const transcriptResult =
-      await getTranscript(videoId);
-
-
-
-    return {
+    const result: VideoData = {
 
 
       title:
@@ -100,6 +107,12 @@ export async function getVideoData(
 
 
     };
+
+    // Store in cache for subsequent requests
+    cacheSet(cacheKey, result);
+    console.log(`[extraction] Cached ${videoId}`);
+
+    return result;
 
 
   } catch(error) {

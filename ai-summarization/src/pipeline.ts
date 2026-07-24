@@ -1,3 +1,10 @@
+// Load .env from repo root before anything else reads process.env
+import { config } from "dotenv";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+const __dirname = dirname(fileURLToPath(import.meta.url));
+config({ path: resolve(__dirname, "../../.env") });
+
 import Groq from "groq-sdk";
 import type {
   TranscriptSegment,
@@ -137,11 +144,11 @@ function buildFallbackSummary(
   switch (mode) {
     case "detailed":
       summary = [
-        `**Overview** — ${firstPoint}.`,
+        `*Overview* — ${firstPoint}.`,
         "",
         `The video covers approximately ${transcript.length} segments over ${Math.round(totalSeconds)} seconds.`,
         "",
-        `**Closing** — ${lastPoint}.`,
+        `*Closing* — ${lastPoint}.`,
       ].join("\n");
       break;
     case "bullets": {
@@ -151,7 +158,7 @@ function buildFallbackSummary(
     }
     default:
       summary = [
-        `**TL;DR** — ${firstPoint}.`,
+        `*TL;DR* — ${firstPoint}.`,
         "",
         `This video spans ${Math.round(totalSeconds)} seconds across ${transcript.length} transcript segments.`,
       ].join("\n");

@@ -17,6 +17,7 @@ import {
   formatErrorMessage,
 } from "../utils/format.js";
 import { isErrorResponse } from "../types/index.js";
+import { checkRateLimit } from "../utils/rateLimit.js";
 
 // ---------------------------------------------------------------------------
 // Concurrency guard — in-memory lock per user
@@ -36,6 +37,11 @@ const activeUserRequests = new Set<number>();
 //   - (also handles mobile, embed, no-www variants, uppercase)
 const YOUTUBE_URL_PATTERN = /(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=|shorts\/|embed\/|live\/|)([a-zA-Z0-9_-]{11})/i;
 
+// Global variant of the same pattern — matchAll() requires the "g" flag.
+// Keep as a separate constant so extractYoutubeUrl() can keep using the
+// non-global pattern (which gives capture groups via .match()).
+const YOUTUBE_URL_PATTERN_GLOBAL = /(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=|shorts\/|embed\/|live\/|)([a-zA-Z0-9_-]{11})/gi;
+
 /**
  * Check if a message text contains a YouTube URL.
  *
@@ -54,7 +60,7 @@ function extractYoutubeUrl(text: string): string | null {
  * @returns The total count of YouTube URLs found
  */
 function countYoutubeUrls(text: string): number {
-  const matches = text.matchAll(YOUTUBE_URL_PATTERN);
+  const matches = text.matchAll(YOUTUBE_URL_PATTERN_GLOBAL);
   let count = 0;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   for (const _ of matches) {
@@ -94,6 +100,17 @@ export async function handleMessage(ctx: Context): Promise<void> {
   }
 
   // -----------------------------------------------------------------------
+  // Rate limit check: per-user sliding window
+  // -----------------------------------------------------------------------
+  const rateCheck = checkRateLimit(userId);
+  if (!rateCheck.allowed) {
+    await ctx.reply(
+      `⏳ You're doing that too fast — try again in ${rateCheck.retryAfterSeconds} seconds.`,
+    );
+    return;
+  }
+
+  // -----------------------------------------------------------------------
   // Concurrency guard: only one active request per user at a time
   // -----------------------------------------------------------------------
   if (activeUserRequests.has(userId)) {
@@ -113,10 +130,10 @@ export async function handleMessage(ctx: Context): Promise<void> {
     if (!url) {
       // No URL found — send a helpful prompt so the user knows what this bot does
       await ctx.reply(
-        "👋 Send me a **YouTube URL** and I'll fetch the transcript " +
-        "and generate a summary for you!\n\n" +
+        "👋 Send me a *YouTube URL* and I'll fetch the transcript " +
+        "and generate a summary for you\\!\n\n" +
         "_Example:_ `https://youtube.com/watch?v=dQw4w9WgXcQ`",
-        { parse_mode: "Markdown" }
+        { parse_mode: "MarkdownV2" }
       );
       return;
     }
@@ -160,7 +177,7 @@ export async function handleMessage(ctx: Context): Promise<void> {
       // rather than losing the result entirely
       try {
         await ctx.reply(successText, {
-          parse_mode: "Markdown",
+          parse_mode: "MarkdownV2",
         });
       } catch {
         // Markdown parsing failed — resend without formatting so user still gets content
@@ -171,7 +188,7 @@ export async function handleMessage(ctx: Context): Promise<void> {
       // Per §4: Bot Core catches error shapes and messages the user sensibly
       await ctx.reply(
         formatErrorMessage(result.error.reason, result.error.code) + multiUrlNote,
-        { parse_mode: "Markdown" }
+        { parse_mode: "MarkdownV2" }
       );
     }
   } finally {

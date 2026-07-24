@@ -18,18 +18,20 @@ import type { VideoData, SummaryResult } from "../types/index.js";
 // ---------------------------------------------------------------------------
 
 /**
- * Escape Telegram Markdown special characters in a text string.
+ * Escape Telegram MarkdownV2 special characters in a text string.
  *
- * Escapes: _ * ` [ ]  — covers inline formatting (bold, italic, code) and
- * link/button syntax (square brackets). Without escaping brackets, a
- * malicious or accidental pattern like [click here](http://evil.com) would
- * render as a live clickable link even after other characters are escaped.
+ * Per the Bot API docs, these characters MUST be escaped with a preceding
+ * backslash wherever they appear outside formatting markers:
+ *   _ * [ ] ( ) ~ ` > # + - = | { } . !
+ * plus the backslash itself (escape it first so we don't double-escape).
  *
  * Apply this to any dynamic/externally-sourced text before embedding it in
- * a Telegram Markdown message.
+ * a Telegram MarkdownV2 message.
  */
 export function escapeMarkdown(text: string): string {
-  return text.replace(/[_*\[\]`]/g, "\\$&");
+  return text
+    .replace(/\\/g, "\\\\")
+    .replace(/[_*[\]()~`>#+\-=|{}.!]/g, "\\$&");
 }
 
 /**
@@ -62,19 +64,24 @@ export function formatSuccessMessage(
       ? "📝 YouTube captions"
       : "🎤 Whisper transcription (Groq)";
 
-  // Escape user-facing text to prevent Markdown injection
+  // Escape ALL user-facing text to prevent MarkdownV2 injection.
+  // Every interpolated variable goes through escapeMarkdown, including
+  // computed strings (date, duration, views) that may contain special
+  // characters like periods, hyphens, or parentheses.
   const safeTitle = escapeMarkdown(video.title);
   const safeChannel = escapeMarkdown(video.channel);
+  const safeDuration = escapeMarkdown(durationStr);
+  const safeViews = escapeMarkdown(viewsStr);
+  const safeDate = escapeMarkdown(new Date(video.upload_date).toLocaleDateString());
   const safeSummary = escapeMarkdown(summary.summary);
   const safeMode = escapeMarkdown(summary.mode);
+  const safeSource = escapeMarkdown(sourceLabel);
 
   return [
-    `**${safeTitle}**`,
-    `📺 ${safeChannel}  ·  ${durationStr}  ·  ${viewsStr} views`,
-    `📅 ${new Date(video.upload_date).toLocaleDateString()}`,
-    `_Source: ${sourceLabel}_`,
-    "",
-    "---",
+    `*${safeTitle}*`,
+    `📺 ${safeChannel}  ·  ${safeDuration}  ·  ${safeViews} views`,
+    `📅 ${safeDate}`,
+    `_Source: ${safeSource}_`,
     "",
     safeSummary,
     "",
@@ -90,10 +97,11 @@ export function formatSuccessMessage(
  * @returns A formatted error string
  */
 export function formatErrorMessage(reason: string, code?: string): string {
+  const safeReason = escapeMarkdown(reason);
   const lines = [
-    "⚠️ **Something went wrong**",
+    "⚠️ *Something went wrong*",
     "",
-    reason,
+    safeReason,
   ];
 
   if (code) {
