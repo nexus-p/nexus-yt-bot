@@ -137,6 +137,10 @@ async function getWhisperTranscript(
 
 
 
+    if (!process.env.GROQ_API_KEY) {
+      throw new Error("GROQ_API_KEY is required for Whisper transcription fallback but is not set.");
+    }
+
     const groq =
       new Groq({
 
@@ -162,6 +166,10 @@ async function getWhisperTranscript(
       }) as any;
 
 
+
+    if (!Array.isArray(result.segments)) {
+      throw new Error("Whisper transcription returned an unexpected response format (missing segments array).");
+    }
 
     return {
 

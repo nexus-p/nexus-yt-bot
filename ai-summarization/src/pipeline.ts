@@ -144,11 +144,11 @@ function buildFallbackSummary(
   switch (mode) {
     case "detailed":
       summary = [
-        `**Overview** — ${firstPoint}.`,
+        `*Overview* — ${firstPoint}.`,
         "",
         `The video covers approximately ${transcript.length} segments over ${Math.round(totalSeconds)} seconds.`,
         "",
-        `**Closing** — ${lastPoint}.`,
+        `*Closing* — ${lastPoint}.`,
       ].join("\n");
       break;
     case "bullets": {
@@ -158,7 +158,7 @@ function buildFallbackSummary(
     }
     default:
       summary = [
-        `**TL;DR** — ${firstPoint}.`,
+        `*TL;DR* — ${firstPoint}.`,
         "",
         `This video spans ${Math.round(totalSeconds)} seconds across ${transcript.length} transcript segments.`,
       ].join("\n");

@@ -17,6 +17,7 @@ import {
   formatErrorMessage,
 } from "../utils/format.js";
 import { isErrorResponse } from "../types/index.js";
+import { checkRateLimit } from "../utils/rateLimit.js";
 
 // ---------------------------------------------------------------------------
 // Concurrency guard — in-memory lock per user
@@ -95,6 +96,17 @@ export async function handleMessage(ctx: Context): Promise<void> {
   const userId = ctx.from?.id;
   if (!userId) {
     console.warn("[bot-core] Received message without user ID, dropping");
+    return;
+  }
+
+  // -----------------------------------------------------------------------
+  // Rate limit check: per-user sliding window
+  // -----------------------------------------------------------------------
+  const rateCheck = checkRateLimit(userId);
+  if (!rateCheck.allowed) {
+    await ctx.reply(
+      `⏳ You're doing that too fast — try again in ${rateCheck.retryAfterSeconds} seconds.`,
+    );
     return;
   }
 
