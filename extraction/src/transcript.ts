@@ -13,6 +13,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 dotenv.config({ path: resolve(__dirname, "../../.env") });
 
+// Root cookies.txt path — same directory as .env (one level above /extraction)
+const COOKIES_PATH = resolve(__dirname, "../../cookies.txt");
+
 const execFileAsync = promisify(execFile);
 
 
@@ -102,27 +105,35 @@ async function getWhisperTranscript(
       Prevents command injection attacks.
     */
 
-    await execFileAsync(
+    // Build yt-dlp args
+    // yt-dlp auto-detects deno on PATH for the YouTube JS "n challenge".
+    // No explicit --js-runtimes flag needed — deno is the default runtime.
+    // The official GitHub release executable bundles yt-dlp-ejs.
+    const ytDlpArgs: string[] = [
 
-      "yt-dlp",
+      "-x",
 
-      [
+      "--audio-format",
 
-        "-x",
+      "mp3",
 
-        "--audio-format",
+      "-o",
 
-        "mp3",
+      audioFile,
 
-        "-o",
+    ];
 
-        audioFile,
+    // Add --cookies flag if cookies.txt exists at the project root
+    if (fs.existsSync(COOKIES_PATH)) {
+      console.log("yt-dlp cookies found — using authenticated session");
+      ytDlpArgs.push("--cookies", COOKIES_PATH);
+    } else {
+      console.log("yt-dlp cookies not found — proceeding without authentication");
+    }
 
-        url
+    ytDlpArgs.push(url);
 
-      ]
-
-    );
+    await execFileAsync("yt-dlp", ytDlpArgs);
 
 
 

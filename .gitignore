@@ -45,3 +45,8 @@ coverage/
 # Temp files
 tmp/
 temp/
+
+# Authentication
+cookies.txt
+bin/
+*.zip
