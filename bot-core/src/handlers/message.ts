@@ -3,28 +3,26 @@
 //
 // This handler processes every incoming Telegram message:
 //   1. Check if it contains a YouTube URL
-//   2. If yes, run the transcript pipeline
-//   3. Send the result (summary or error) back to the chat
-//   4. If no URL is detected, reply with a friendly prompt
+//   2. If yes, enqueue a job for the pipeline
+//   3. If no URL is detected, reply with a friendly prompt
 //
-// v1 scope: YouTube URLs only. Search queries are v2.
+// The actual pipeline execution is handled asynchronously by the job queue
+// processor (see ../services/jobQueue.ts).
 // =============================================================================
 
 import type { Context } from "grammy";
-import { runPipeline } from "../services/pipeline.js";
+import { enqueueJob, getUserActiveJob } from "../services/jobQueue.js";
 import {
   formatSuccessMessage,
   formatErrorMessage,
 } from "../utils/format.js";
-import { isErrorResponse } from "../types/index.js";
 import { checkRateLimit } from "../utils/rateLimit.js";
 
 // ---------------------------------------------------------------------------
-// Concurrency guard — in-memory lock per user
+// Concurrency guard — backed by the job queue
 // Prevents a user from triggering multiple pipeline runs simultaneously.
-// v1: simple Set. v2 may replace with a proper queue.
+// Uses the real job store instead of a bare Set.
 // ---------------------------------------------------------------------------
-const activeUserRequests = new Set<number>();
 
 // Regex patterns for detecting YouTube URLs
 // Matches common YouTube URL formats:
@@ -111,88 +109,59 @@ export async function handleMessage(ctx: Context): Promise<void> {
   }
 
   // -----------------------------------------------------------------------
-  // Concurrency guard: only one active request per user at a time
+  // Concurrency guard: reject if user already has a queued/processing job
+  // Backed by the real job store instead of a bare Set.
   // -----------------------------------------------------------------------
-  if (activeUserRequests.has(userId)) {
+  const activeJob = getUserActiveJob(userId);
+  if (activeJob) {
     await ctx.reply(
       "⏳ You already have a request processing — please wait for it to finish before sending another.",
     );
     return;
   }
-  activeUserRequests.add(userId);
 
-  try {
-    // -----------------------------------------------------------------------
-    // Step 1: Check if the message contains a YouTube URL
-    // -----------------------------------------------------------------------
-    const url = extractYoutubeUrl(text);
+  // -----------------------------------------------------------------------
+  // Step 1: Check if the message contains a YouTube URL
+  // -----------------------------------------------------------------------
+  const url = extractYoutubeUrl(text);
 
-    if (!url) {
-      // No URL found — send a helpful prompt so the user knows what this bot does
-      await ctx.reply(
-        "👋 Send me a *YouTube URL* and I'll fetch the transcript " +
-        "and generate a summary for you\\!\n\n" +
-        "_Example:_ `https://youtube.com/watch?v=dQw4w9WgXcQ`",
-        { parse_mode: "MarkdownV2" }
-      );
-      return;
-    }
-
-    // -----------------------------------------------------------------------
-    // Step 2: Acknowledge receipt so the user knows something is happening
-    // -----------------------------------------------------------------------
-    const statusMsg = await ctx.reply(
-      "⏳ Processing your video... fetching transcript and generating summary.",
+  if (!url) {
+    // No URL found — send a helpful prompt so the user knows what this bot does
+    await ctx.reply(
+      "👋 Send me a *YouTube URL* and I'll fetch the transcript " +
+      "and generate a summary for you\\!\n\n" +
+      "_Example:_ `https://youtube.com/watch?v=dQw4w9WgXcQ`",
+      { parse_mode: "MarkdownV2" }
     );
-
-    // -----------------------------------------------------------------------
-    // Step 3: Check for multiple URLs in a single message
-    // -----------------------------------------------------------------------
-    const urlCount = countYoutubeUrls(text);
-    const multiUrlNote =
-      urlCount > 1
-        ? "\n\n_Note: I can only process one video at a time — using the first link found._"
-        : "";
-
-    // -----------------------------------------------------------------------
-    // Step 4: Run the pipeline (extract -> summarize)
-    // -----------------------------------------------------------------------
-    const result = await runPipeline(url);
-
-    // -----------------------------------------------------------------------
-    // Step 4: Send the result back to the user
-    // -----------------------------------------------------------------------
-    // Delete the "processing" status message to keep the chat clean
-    try {
-      await ctx.api.deleteMessage(ctx.chat.id, statusMsg.message_id);
-    } catch {
-      // Best-effort: if the message can't be deleted (e.g. timed out), just log
-      console.warn("[bot-core] Could not delete status message (non-critical)");
-    }
-
-    if (result.success) {
-      // ---- Success path ----
-      const successText = formatSuccessMessage(result.video, result.summary) + multiUrlNote;
-      // Guard with try/catch so a formatting failure falls back to plain text
-      // rather than losing the result entirely
-      try {
-        await ctx.reply(successText, {
-          parse_mode: "MarkdownV2",
-        });
-      } catch {
-        // Markdown parsing failed — resend without formatting so user still gets content
-        await ctx.reply(successText);
-      }
-    } else {
-      // ---- Error path ----
-      // Per §4: Bot Core catches error shapes and messages the user sensibly
-      await ctx.reply(
-        formatErrorMessage(result.error.reason, result.error.code) + multiUrlNote,
-        { parse_mode: "MarkdownV2" }
-      );
-    }
-  } finally {
-    // Always release the concurrency lock when done
-    activeUserRequests.delete(userId);
+    return;
   }
+
+  // -----------------------------------------------------------------------
+  // Step 2: Determine extra note for multi-URL messages
+  // -----------------------------------------------------------------------
+  const urlCount = countYoutubeUrls(text);
+  const extraNote =
+    urlCount > 1
+      ? "\n\n_Note: I can only process one video at a time — using the first link found._"
+      : "";
+
+  // -----------------------------------------------------------------------
+  // Step 3: Send a "processing" status message and enqueue the job
+  // -----------------------------------------------------------------------
+  const statusMsg = await ctx.reply(
+    "⏳ Your request has been queued and will be processed shortly.",
+  );
+
+  enqueueJob({
+    userId,
+    chatId: ctx.chat.id,
+    statusMsgId: statusMsg.message_id,
+    input: {
+      type: "url",
+      value: url,
+      extraNote,
+    },
+  });
+
+  // Handler returns immediately — the job queue processor handles the rest
 }

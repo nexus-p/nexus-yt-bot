@@ -19,6 +19,7 @@ config({ path: resolve(__dirname, "../../.env") });
 
 import { Bot, type Context } from "grammy";
 import { handleMessage } from "./handlers/message.js";
+import { initJobQueue } from "./services/jobQueue.js";
 
 // ---------------------------------------------------------------------------
 // Environment
@@ -61,6 +62,11 @@ bot.catch((err: Error & { ctx?: Context }) => {
       .catch(() => {});
   }
 });
+
+// ---------------------------------------------------------------------------
+// Initialise job queue (background processor)
+// ---------------------------------------------------------------------------
+initJobQueue(bot.api);
 
 // ---------------------------------------------------------------------------
 // Register handlers
