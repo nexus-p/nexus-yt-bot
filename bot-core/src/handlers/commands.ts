@@ -1,0 +1,175 @@
+// =============================================================================
+// Command Handlers — /summarize, /stats, /broadcast
+//
+// Registered in index.ts alongside the generic message handler.
+// =============================================================================
+
+import type { Context } from "grammy";
+import { enqueueJob, getUserActiveJob } from "../services/jobQueue.js";
+import { checkRateLimit } from "../utils/rateLimit.js";
+import { isAdmin } from "../config/admin.js";
+import { recordUser, getUserCount, getActiveUserCount, getAllUserIds } from "../db/index.js";
+
+// Reuse the same YOUTUBE_URL_PATTERN from message.ts
+const YOUTUBE_URL_PATTERN = /(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=|shorts\/|embed\/|live\/|)([a-zA-Z0-9_-]{11})/i;
+const YOUTUBE_ID_PATTERN = /^[a-zA-Z0-9_-]{11}$/;
+
+// =========================================================================
+// /summarize <youtube_url>
+// =========================================================================
+
+export async function handleSummarize(ctx: Context): Promise<void> {
+  recordUser(ctx);
+  const userId = ctx.from?.id;
+  if (!userId) return;
+  if (!ctx.chat) {
+    console.warn("[bot-core] /summarize without chat context, dropping");
+    return;
+  }
+
+  // Rate limit
+  const rateCheck = checkRateLimit(userId);
+  if (!rateCheck.allowed) {
+    await ctx.reply(
+      `⏳ You're doing that too fast — try again in ${rateCheck.retryAfterSeconds} seconds.`,
+    );
+    return;
+  }
+
+  // Concurrency guard
+  const activeJob = getUserActiveJob(userId);
+  if (activeJob) {
+    await ctx.reply(
+      "⏳ You already have a request processing — please wait for it to finish before sending another.",
+    );
+    return;
+  }
+
+  // Extract argument: everything after "/summarize "
+  const text = ctx.message?.text ?? "";
+  const arg = text.slice("/summarize".length).trim();
+
+  if (!arg) {
+    await ctx.reply(
+      "Usage: /summarize <youtube_url>\n\n" +
+      "_Example:_ `/summarize https://youtube.com/watch?v=dQw4w9WgXcQ`",
+      { parse_mode: "MarkdownV2" }
+    );
+    return;
+  }
+
+  // Try to match as a full URL first
+  let url = arg.match(YOUTUBE_URL_PATTERN)?.[0] ?? null;
+
+  // If no full URL match, check if the arg is just a bare video ID
+  if (!url && YOUTUBE_ID_PATTERN.test(arg)) {
+    url = `https://youtube.com/watch?v=${arg}`;
+  }
+
+  if (!url) {
+    await ctx.reply(
+      "Usage: /summarize <youtube_url>\n\n" +
+      "_Example:_ `/summarize https://youtube.com/watch?v=dQw4w9WgXcQ`",
+      { parse_mode: "MarkdownV2" }
+    );
+    return;
+  }
+
+  // Send status message and enqueue
+  const statusMsg = await ctx.reply(
+    "⏳ Your request has been queued and will be processed shortly.",
+  );
+
+  enqueueJob({
+    userId,
+    chatId: ctx.chat.id,
+    statusMsgId: statusMsg.message_id,
+    input: {
+      type: "url",
+      value: url,
+    },
+  });
+}
+
+// =========================================================================
+// /stats (admin only)
+// =========================================================================
+
+export async function handleStats(ctx: Context): Promise<void> {
+  recordUser(ctx);
+  if (!isAdmin(ctx)) {
+    await ctx.reply("You don't have permission to use this command.");
+    return;
+  }
+
+  const totalUsers = getUserCount();
+  const active24h = getActiveUserCount(24);
+
+  // Job queue stats — simple, no extra complexity
+  let queueInfo = "0 queued, 0 processing";
+  try {
+    const { getJobStats } = await import("../services/jobQueue.js");
+    if (typeof getJobStats === "function") {
+      const stats = getJobStats();
+      queueInfo = `${stats.queued} queued, ${stats.processing} processing`;
+    }
+  } catch {
+    // Fallback if getJobStats isn't available
+  }
+
+  await ctx.reply(
+    `📊 *Bot Stats*\n\n` +
+    `👤 Total users: ${totalUsers}\n` +
+    `🟢 Active (24h): ${active24h}\n` +
+    `⚙️  Job queue: ${queueInfo}`,
+    { parse_mode: "MarkdownV2" }
+  );
+}
+
+// =========================================================================
+// /broadcast <message> (admin only)
+// =========================================================================
+
+export async function handleBroadcast(ctx: Context): Promise<void> {
+  recordUser(ctx);
+  if (!isAdmin(ctx)) {
+    await ctx.reply("You don't have permission to use this command.");
+    return;
+  }
+
+  const text = ctx.message?.text ?? "";
+  const message = text.slice("/broadcast".length).trim();
+
+  if (!message) {
+    await ctx.reply(
+      "Usage: /broadcast <message>\n\n" +
+      "_Example:_ `/broadcast Hello everyone\\! The bot has been updated\\.`",
+      { parse_mode: "MarkdownV2" }
+    );
+    return;
+  }
+
+  // Confirm to admin
+  await ctx.reply(`📨 Broadcasting to all users...`);
+
+  const userIds = getAllUserIds();
+  let successCount = 0;
+  let failCount = 0;
+
+  for (const uid of userIds) {
+    try {
+      await ctx.api.sendMessage(uid, message, {
+        parse_mode: "MarkdownV2",
+      });
+      successCount++;
+    } catch {
+      failCount++;
+    }
+    // Small delay to avoid Telegram rate limits
+    await new Promise((r) => setTimeout(r, 50));
+  }
+
+  await ctx.reply(
+    `📨 Broadcast complete: ${successCount} sent, ${failCount} failed.`,
+  );
+}

@@ -19,7 +19,13 @@ config({ path: resolve(__dirname, "../../.env") });
 
 import { Bot, type Context } from "grammy";
 import { handleMessage } from "./handlers/message.js";
+import {
+  handleSummarize,
+  handleStats,
+  handleBroadcast,
+} from "./handlers/commands.js";
 import { initJobQueue } from "./services/jobQueue.js";
+import { recordUser } from "./db/index.js";
 
 // ---------------------------------------------------------------------------
 // Environment
@@ -74,6 +80,11 @@ initJobQueue(bot.api);
 
 // Generic message handler — catches all text messages and routes them
 bot.on("message:text", handleMessage);
+
+// Command handlers
+bot.command("summarize", handleSummarize);
+bot.command("stats", handleStats);
+bot.command("broadcast", handleBroadcast);
 
 // ---------------------------------------------------------------------------
 // Start polling

@@ -132,6 +132,19 @@ export function getJob(jobId: string): Job | undefined {
   return jobs.get(jobId);
 }
 
+/**
+ * Get current queue stats (for /stats admin command).
+ */
+export function getJobStats(): { queued: number; processing: number } {
+  let queued = 0;
+  let processing = 0;
+  for (const job of jobs.values()) {
+    if (job.status === "queued") queued++;
+    if (job.status === "processing") processing++;
+  }
+  return { queued, processing };
+}
+
 // ---------------------------------------------------------------------------
 // Queue Processor
 // ---------------------------------------------------------------------------

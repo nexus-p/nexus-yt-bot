@@ -17,6 +17,7 @@ import {
   formatErrorMessage,
 } from "../utils/format.js";
 import { checkRateLimit } from "../utils/rateLimit.js";
+import { recordUser } from "../db/index.js";
 
 // ---------------------------------------------------------------------------
 // Concurrency guard — backed by the job queue
@@ -96,6 +97,11 @@ export async function handleMessage(ctx: Context): Promise<void> {
     console.warn("[bot-core] Received message without user ID, dropping");
     return;
   }
+
+  // -----------------------------------------------------------------------
+  // User tracking — upsert on every interaction
+  // -----------------------------------------------------------------------
+  recordUser(ctx);
 
   // -----------------------------------------------------------------------
   // Rate limit check: per-user sliding window
