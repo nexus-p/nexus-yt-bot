@@ -222,20 +222,31 @@ async function summarizeInternal(
 
   if (estimatedTokens <= TOKEN_LIMIT) {
     const { system, user } = buildSummaryPrompt(fullText, mode, false);
+    const t0 = Date.now();
     const content = await callGroq(system, user, 0.5, 1024);
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    console.log(`[timing] Groq summarization call: ${elapsed}s`);
     if (content) return { summary: content, mode };
     return buildFallbackSummary(segments, mode);
   }
 
   const chunks = chunkTranscript(segments);
   const chunkSummaries: string[] = [];
+  const chunkTimings: number[] = [];
 
   for (let i = 0; i < chunks.length; i++) {
     const chunkText = formatSegments(chunks[i]);
     const { system, user } = buildSummaryPrompt(chunkText, "tldr", true);
+    const t0 = Date.now();
     const content = await callGroq(system, user, 0.5, 512);
+    const elapsed = Date.now() - t0;
+    chunkTimings.push(elapsed);
+    console.log(`[timing] Groq chunk ${i + 1}/${chunks.length}: ${(elapsed / 1000).toFixed(1)}s`);
     chunkSummaries.push(content || buildFallbackSummary(chunks[i], "tldr").summary);
   }
+
+  const totalChunkTime = (chunkTimings.reduce((a, b) => a + b, 0) / 1000).toFixed(1);
+  console.log(`[timing] Chunked into ${chunks.length} parts, total chunk processing: ${totalChunkTime}s`);
 
   const combinedPrompt = [
     `The video transcript was split into ${chunks.length} parts. Below are the summaries of each part.`,
@@ -247,7 +258,10 @@ async function summarizeInternal(
   ].join("\n");
 
   const { system } = buildSummaryPrompt("", mode, false);
+  const tFinal = Date.now();
   const finalContent = await callGroq(system, combinedPrompt, 0.5, 1024);
+  const finalElapsed = ((Date.now() - tFinal) / 1000).toFixed(1);
+  console.log(`[timing] Groq final consolidation call: ${finalElapsed}s`);
   if (finalContent) return { summary: finalContent, mode };
 
   const combinedFallback = chunkSummaries.join("\n\n");
