@@ -9,6 +9,7 @@ import { enqueueJob, getUserActiveJob } from "../services/jobQueue.js";
 import { checkRateLimit } from "../utils/rateLimit.js";
 import { isAdmin } from "../config/admin.js";
 import { recordUser, getUserCount, getActiveUserCount, getAllUserIds } from "../db/index.js";
+import { escapeMarkdown } from "../utils/format.js";
 
 // Reuse the same YOUTUBE_URL_PATTERN from message.ts
 const YOUTUBE_URL_PATTERN = /(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=|shorts\/|embed\/|live\/|)([a-zA-Z0-9_-]{11})/i;
@@ -51,7 +52,7 @@ export async function handleSummarize(ctx: Context): Promise<void> {
 
   if (!arg) {
     await ctx.reply(
-      "Usage: /summarize <youtube_url>\n\n" +
+      "Usage: /summarize <youtube_url\\>\n\n" +
       "_Example:_ `/summarize https://youtube.com/watch?v=dQw4w9WgXcQ`",
       { parse_mode: "MarkdownV2" }
     );
@@ -68,7 +69,7 @@ export async function handleSummarize(ctx: Context): Promise<void> {
 
   if (!url) {
     await ctx.reply(
-      "Usage: /summarize <youtube_url>\n\n" +
+      "Usage: /summarize <youtube_url\\>\n\n" +
       "_Example:_ `/summarize https://youtube.com/watch?v=dQw4w9WgXcQ`",
       { parse_mode: "MarkdownV2" }
     );
@@ -119,9 +120,9 @@ export async function handleStats(ctx: Context): Promise<void> {
 
   await ctx.reply(
     `📊 *Bot Stats*\n\n` +
-    `👤 Total users: ${totalUsers}\n` +
-    `🟢 Active (24h): ${active24h}\n` +
-    `⚙️  Job queue: ${queueInfo}`,
+    `👤 Total users: ${escapeMarkdown(String(totalUsers))}\n` +
+    `🟢 Active (24h): ${escapeMarkdown(String(active24h))}\n` +
+    `⚙️  Job queue: ${escapeMarkdown(queueInfo)}`,
     { parse_mode: "MarkdownV2" }
   );
 }
@@ -142,7 +143,7 @@ export async function handleBroadcast(ctx: Context): Promise<void> {
 
   if (!message) {
     await ctx.reply(
-      "Usage: /broadcast <message>\n\n" +
+      "Usage: /broadcast <message\\>\n\n" +
       "_Example:_ `/broadcast Hello everyone\\! The bot has been updated\\.`",
       { parse_mode: "MarkdownV2" }
     );
@@ -156,9 +157,11 @@ export async function handleBroadcast(ctx: Context): Promise<void> {
   let successCount = 0;
   let failCount = 0;
 
+  const safeMessage = escapeMarkdown(message);
+
   for (const uid of userIds) {
     try {
-      await ctx.api.sendMessage(uid, message, {
+      await ctx.api.sendMessage(uid, safeMessage, {
         parse_mode: "MarkdownV2",
       });
       successCount++;
