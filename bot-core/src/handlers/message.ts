@@ -86,6 +86,13 @@ export async function handleMessage(ctx: Context): Promise<void> {
   }
 
   // -----------------------------------------------------------------------
+  // Skip messages that are bot commands — they're handled separately
+  // -----------------------------------------------------------------------
+  if (ctx.message?.entities?.some((e) => e.type === "bot_command")) {
+    return;
+  }
+
+  // -----------------------------------------------------------------------
   // Safety check: guard chat ID before using it
   // -----------------------------------------------------------------------
   if (!ctx.chat) {
