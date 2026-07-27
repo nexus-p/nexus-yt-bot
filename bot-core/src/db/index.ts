@@ -28,6 +28,8 @@ if (!existsSync(dbDir)) {
 
 const db = new DatabaseSync(DB_PATH);
 
+console.log(`[db] SQLite ready at ${DB_PATH}`);
+
 // ---------------------------------------------------------------------------
 // Schema
 // ---------------------------------------------------------------------------
@@ -60,13 +62,17 @@ const countActiveStmt = db.prepare(
 const allUserIdsStmt = db.prepare("SELECT telegram_user_id FROM users");
 
 export function recordUser(ctx: Context): void {
-  const userId = ctx.from?.id;
-  if (!userId) return;
+  try {
+    const userId = ctx.from?.id;
+    if (!userId) return;
 
-  const username = ctx.from.username ?? null;
-  const now = new Date().toISOString();
+    const username = ctx.from.username ?? null;
+    const now = new Date().toISOString();
 
-  upsertStmt.run(userId, username, now, now);
+    upsertStmt.run(userId, username, now, now);
+  } catch (err) {
+    console.error("[db] recordUser failed:", err);
+  }
 }
 
 export function getUserCount(): number {

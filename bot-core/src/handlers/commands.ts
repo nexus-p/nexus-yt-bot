@@ -20,6 +20,7 @@ const YOUTUBE_ID_PATTERN = /^[a-zA-Z0-9_-]{11}$/;
 // =========================================================================
 
 export async function handleSummarize(ctx: Context): Promise<void> {
+  console.log("[cmd] /summarize from user", ctx.from?.id);
   recordUser(ctx);
   const userId = ctx.from?.id;
   if (!userId) return;
@@ -97,6 +98,7 @@ export async function handleSummarize(ctx: Context): Promise<void> {
 // =========================================================================
 
 export async function handleStats(ctx: Context): Promise<void> {
+  console.log("[cmd] /stats from user", ctx.from?.id);
   recordUser(ctx);
   if (!isAdmin(ctx)) {
     await ctx.reply("You don't have permission to use this command.");
@@ -132,6 +134,7 @@ export async function handleStats(ctx: Context): Promise<void> {
 // =========================================================================
 
 export async function handleBroadcast(ctx: Context): Promise<void> {
+  console.log("[cmd] /broadcast from user", ctx.from?.id);
   recordUser(ctx);
   if (!isAdmin(ctx)) {
     await ctx.reply("You don't have permission to use this command.");

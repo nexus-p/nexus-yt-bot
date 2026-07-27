@@ -89,6 +89,7 @@ export async function handleMessage(ctx: Context): Promise<void> {
   // Skip messages that are bot commands — they're handled separately
   // -----------------------------------------------------------------------
   if (ctx.message?.entities?.some((e) => e.type === "bot_command")) {
+    console.log("[bot-core] Skipping command in generic message handler");
     return;
   }
 
