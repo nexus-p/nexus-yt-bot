@@ -10,7 +10,7 @@
 // processor (see ../services/jobQueue.ts).
 // =============================================================================
 
-import type { Context } from "grammy";
+import type { Context, NextFunction } from "grammy";
 import { enqueueJob, getUserActiveJob } from "../services/jobQueue.js";
 import {
   formatSuccessMessage,
@@ -75,7 +75,7 @@ function countYoutubeUrls(text: string): number {
  * so it fires for any text message. Checks for URLs first, then falls through
  * to a guidance message.
  */
-export async function handleMessage(ctx: Context): Promise<void> {
+export async function handleMessage(ctx: Context, next: NextFunction): Promise<void> {
   // -----------------------------------------------------------------------
   // Safety check: we need message text to work with
   // -----------------------------------------------------------------------
@@ -86,10 +86,11 @@ export async function handleMessage(ctx: Context): Promise<void> {
   }
 
   // -----------------------------------------------------------------------
-  // Skip messages that are bot commands — they're handled separately
+  // Skip messages that start with / — they're commands handled separately
   // -----------------------------------------------------------------------
-  if (ctx.message?.entities?.some((e) => e.type === "bot_command")) {
-    console.log("[bot-core] Skipping command in generic message handler");
+  if (text.startsWith("/")) {
+    console.log("[bot-core] Ignoring slash-command in generic handler");
+    await next();
     return;
   }
 
