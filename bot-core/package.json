@@ -13,8 +13,6 @@
   "dependencies": {
     "@nexus-p/ai-summarization": "*",
     "@nexus-p/extraction": "*",
-    "@types/better-sqlite3": "^7.6.13",
-    "better-sqlite3": "^13.0.1",
     "dotenv": "^16.4.0",
     "grammy": "^1.34.0"
   },
