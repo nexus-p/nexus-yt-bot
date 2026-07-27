@@ -123,7 +123,7 @@ export async function handleStats(ctx: Context): Promise<void> {
   await ctx.reply(
     `📊 *Bot Stats*\n\n` +
     `👤 Total users: ${escapeMarkdown(String(totalUsers))}\n` +
-    `🟢 Active (24h): ${escapeMarkdown(String(active24h))}\n` +
+    `🟢 Active \\(24h\\): ${escapeMarkdown(String(active24h))}\n` +
     `⚙️  Job queue: ${escapeMarkdown(queueInfo)}`,
     { parse_mode: "MarkdownV2" }
   );
