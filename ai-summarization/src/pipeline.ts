@@ -97,6 +97,7 @@ async function callGroq(
   if (!client) return null;
 
   try {
+    const t0 = Date.now();
     const completion = await client.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [
@@ -106,6 +107,7 @@ async function callGroq(
       temperature,
       max_tokens: maxTokens,
     });
+    console.log(`[timing] Groq chat completion: ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     return completion.choices[0]?.message?.content?.trim() ?? null;
   } catch {
     return null;
@@ -231,10 +233,12 @@ async function summarizeInternal(
   }
 
   const chunks = chunkTranscript(segments);
+  console.log(`[timing] Summarization chunking: ${chunks.length} chunks, ${segments.length} segments`);
   const chunkSummaries: string[] = [];
   const chunkTimings: number[] = [];
 
   for (let i = 0; i < chunks.length; i++) {
+    const tChunk = Date.now();
     const chunkText = formatSegments(chunks[i]);
     const { system, user } = buildSummaryPrompt(chunkText, "tldr", true);
     const t0 = Date.now();
@@ -243,6 +247,7 @@ async function summarizeInternal(
     chunkTimings.push(elapsed);
     console.log(`[timing] Groq chunk ${i + 1}/${chunks.length}: ${(elapsed / 1000).toFixed(1)}s`);
     chunkSummaries.push(content || buildFallbackSummary(chunks[i], "tldr").summary);
+    console.log(`[timing] Summarization chunk ${i + 1}/${chunks.length}: ${((Date.now() - tChunk) / 1000).toFixed(1)}s`);
   }
 
   const totalChunkTime = (chunkTimings.reduce((a, b) => a + b, 0) / 1000).toFixed(1);
