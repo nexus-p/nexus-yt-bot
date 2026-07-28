@@ -6,16 +6,32 @@ export async function getMetadata(
   videoId: string
 ): Promise<Partial<VideoData>> {
 
-  // Create client with default settings — youtubei.js's default client
-  // ("WEB" or "ANDROID" depending on response) provides basic_info and
-  // primary_info for standard video metadata. Using a specific client type
-  // (e.g. Innertube.create({ client_type: "WEB" })) can sometimes yield
-  // richer responses but the default is sufficient for all fields we need.
-  // If basic_info is incomplete for a given video, the warning below will
-  // log which fields are missing so the cause is diagnosable.
   const youtube = await Innertube.create();
 
-  const info = await youtube.getInfo(videoId);
+  // Use getBasicInfo() instead of getInfo() to avoid a known youtubei.js bug
+  // where parsing VideoTitleHeaderView in the watch_next response throws a
+  // ParsingError. getBasicInfo() only fetches the watch endpoint (skipping
+  // the description/engagement panel section that crashes), which is
+  // sufficient for all metadata fields we need.
+  let info;
+  try {
+    const t0 = Date.now();
+    info = await youtube.getBasicInfo(videoId);
+    console.log(`[timing] youtube.getBasicInfo: ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  } catch (err: any) {
+    // If getBasicInfo also fails (e.g. a different parser issue), log it
+    // clearly as a known youtubei.js bug and return what we can.
+    const isParserError = err?.type === "ParsingError" || err?.message?.includes?.("ParsingError");
+    if (isParserError) {
+      console.warn(
+        `[extraction] Known youtubei.js parser bug for ${videoId}: ` +
+        `${err.message}. Returning partial metadata.`
+      );
+    } else {
+      throw err;
+    }
+    return {};
+  }
 
   // Log a warning if title or author is missing — a real video should have both
   if (!info.basic_info.title || !info.basic_info.author) {

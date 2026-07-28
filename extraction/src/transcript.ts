@@ -39,9 +39,12 @@ async function getCaptionTranscript(
   videoId: string
 ): Promise<TranscriptResult> {
 
+  const t0 = Date.now();
+
   const transcript =
     await YoutubeTranscript.fetchTranscript(videoId);
 
+  console.log(`[timing] YouTube captions fetch: ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 
   return {
 
@@ -97,18 +100,7 @@ async function getWhisperTranscript(
 
   try {
 
-
-    /*
-      Security:
-      execFile does not execute through a shell.
-
-      Prevents command injection attacks.
-    */
-
     // Build yt-dlp args
-    // yt-dlp auto-detects deno on PATH for the YouTube JS "n challenge".
-    // No explicit --js-runtimes flag needed — deno is the default runtime.
-    // The official GitHub release executable bundles yt-dlp-ejs.
     const ytDlpArgs: string[] = [
 
       "-x",
@@ -133,8 +125,9 @@ async function getWhisperTranscript(
 
     ytDlpArgs.push(url);
 
+    const tDl = Date.now();
     await execFileAsync("yt-dlp", ytDlpArgs);
-
+    console.log(`[timing] yt-dlp audio download: ${((Date.now() - tDl) / 1000).toFixed(1)}s`);
 
 
     if (!process.env.GROQ_API_KEY) {
@@ -151,6 +144,7 @@ async function getWhisperTranscript(
 
 
 
+    const tWhisper = Date.now();
     const result =
       await groq.audio.transcriptions.create({
 
@@ -164,6 +158,7 @@ async function getWhisperTranscript(
           "verbose_json",
 
       }) as any;
+    console.log(`[timing] Whisper transcription (Groq): ${((Date.now() - tWhisper) / 1000).toFixed(1)}s`);
 
 
 
@@ -198,15 +193,7 @@ async function getWhisperTranscript(
 
   } finally {
 
-
-    /*
-      Always remove temporary files.
-
-      Runs even if:
-      - yt-dlp fails
-      - Groq fails
-      - network fails
-    */
+    const tCleanup = Date.now();
 
     if (
       fs.existsSync(audioFile)
@@ -215,6 +202,8 @@ async function getWhisperTranscript(
       fs.unlinkSync(audioFile);
 
     }
+
+    console.log(`[timing] Whisper file cleanup: ${((Date.now() - tCleanup) / 1000).toFixed(1)}s`);
 
   }
 
