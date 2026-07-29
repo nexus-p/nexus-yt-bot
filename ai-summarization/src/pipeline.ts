@@ -170,7 +170,7 @@ function buildFallbackSummary(
 
 function buildHighlightsPrompt(segmentsText: string): { system: string; user: string } {
   return {
-    system: "You are a helpful assistant that extracts key moments from YouTube video transcripts. Identify the 3-7 most important moments. Return ONLY a raw JSON array of objects with keys \"timestamp\" (number, in seconds) and \"description\" (string). No markdown, no code fences.",
+    system: "You are a helpful assistant that extracts key moments from YouTube video transcripts. Identify the 3-7 most important moments. For each moment, determine a short title and the time range it covers. Return ONLY a raw JSON array of objects with keys \"title\" (string), \"start\" (number, in seconds), \"end\" (number, in seconds). No markdown, no code fences.",
     user: `Transcript:\n${segmentsText}\n\nJSON highlights array:`,
   };
 }
@@ -183,8 +183,9 @@ function buildFallbackHighlights(transcript: TranscriptSegment[]): HighlightsRes
     const text = seg.text.trim();
     if (text.length > 20) {
       highlights.push({
-        timestamp: seg.start,
-        description: text.length > 80 ? text.slice(0, 80) + "..." : text,
+        title: text.length > 60 ? text.slice(0, 60) + "..." : text,
+        start: seg.start,
+        end: seg.end,
       });
     }
   }
