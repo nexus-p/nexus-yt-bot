@@ -10,8 +10,9 @@ export interface SummaryResult {
 }
 
 export interface Highlight {
-  timestamp: number;
-  description: string;
+  title: string;
+  start: number;
+  end: number;
 }
 
 export interface HighlightsResult {
