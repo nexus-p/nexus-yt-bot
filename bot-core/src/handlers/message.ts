@@ -12,18 +12,9 @@
 
 import type { Context, NextFunction } from "grammy";
 import { enqueueJob, getUserActiveJob } from "../services/jobQueue.js";
-import {
-  formatSuccessMessage,
-  formatErrorMessage,
-} from "../utils/format.js";
 import { checkRateLimit } from "../utils/rateLimit.js";
 import { recordUser } from "../db/index.js";
-
-// ---------------------------------------------------------------------------
-// Concurrency guard — backed by the job queue
-// Prevents a user from triggering multiple pipeline runs simultaneously.
-// Uses the real job store instead of a bare Set.
-// ---------------------------------------------------------------------------
+import { getMessageContext } from "../services/messageContext.js";
 
 // Regex patterns for detecting YouTube URLs
 // Matches common YouTube URL formats:
@@ -136,12 +127,38 @@ export async function handleMessage(ctx: Context, next: NextFunction): Promise<v
   }
 
   // -----------------------------------------------------------------------
-  // Step 1: Check if the message contains a YouTube URL
+  // Step 1: Check if this is a reply to a bot message with video context
+  // (Q&A flow — user replies to a summary/highlights message with a question)
+  // -----------------------------------------------------------------------
+  const repliedMsg = ctx.message.reply_to_message;
+  const videoCtx = repliedMsg ? getMessageContext(repliedMsg.message_id) : undefined;
+
+  if (videoCtx) {
+    const statusMsg = await ctx.reply(
+      "⏳ Your question has been queued and will be answered shortly.",
+    );
+
+    enqueueJob({
+      userId,
+      chatId: ctx.chat.id,
+      statusMsgId: statusMsg.message_id,
+      input: {
+        type: "url",
+        value: videoCtx.url,
+        command: "qa",
+        question: text,
+      },
+    });
+
+    return;
+  }
+
+  // -----------------------------------------------------------------------
+  // Step 2: Check if the message contains a YouTube URL
   // -----------------------------------------------------------------------
   const url = extractYoutubeUrl(text);
 
   if (!url) {
-    // No URL found — send a helpful prompt so the user knows what this bot does
     await ctx.reply(
       "👋 Send me a *YouTube URL* and I'll fetch the transcript " +
       "and generate a summary for you\\!\n\n" +
@@ -152,7 +169,7 @@ export async function handleMessage(ctx: Context, next: NextFunction): Promise<v
   }
 
   // -----------------------------------------------------------------------
-  // Step 2: Determine extra note for multi-URL messages
+  // Step 3: Determine extra note for multi-URL messages
   // -----------------------------------------------------------------------
   const urlCount = countYoutubeUrls(text);
   const extraNote =
@@ -161,7 +178,7 @@ export async function handleMessage(ctx: Context, next: NextFunction): Promise<v
       : "";
 
   // -----------------------------------------------------------------------
-  // Step 3: Send a "processing" status message and enqueue the job
+  // Step 4: Send a "processing" status message and enqueue the job
   // -----------------------------------------------------------------------
   const statusMsg = await ctx.reply(
     "⏳ Your request has been queued and will be processed shortly.",

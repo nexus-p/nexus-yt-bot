@@ -14,8 +14,8 @@
 // =============================================================================
 
 import { getVideoData } from "@nexus-p/extraction";
-import { summarize } from "@nexus-p/ai-summarization";
-import type { VideoData, SummaryResult, ErrorResponse } from "../types/index.js";
+import { summarize, getHighlights, askQuestion } from "@nexus-p/ai-summarization";
+import type { VideoData, SummaryResult, HighlightsResult, QnAResult, ErrorResponse } from "../types/index.js";
 import { isErrorResponse } from "../types/index.js";
 
 /**
@@ -82,5 +82,104 @@ export async function runPipeline(url: string): Promise<PipelineResult> {
     success: true,
     video: videoResult,
     summary: summaryResult,
+  };
+}
+
+/**
+ * Result type for the highlights pipeline.
+ */
+export type HighlightsPipelineResult =
+  | {
+      success: true;
+      video: VideoData;
+      highlights: HighlightsResult;
+    }
+  | {
+      success: false;
+      error: ErrorResponse;
+    };
+
+/**
+ * Run the highlights pipeline: extract -> getHighlights.
+ */
+export async function runHighlightsPipeline(url: string): Promise<HighlightsPipelineResult> {
+  const videoResult = await getVideoData(url);
+
+  if (isErrorResponse(videoResult)) {
+    return {
+      success: false,
+      error: {
+        error: true,
+        reason: videoResult.reason,
+        code: videoResult.code,
+      },
+    };
+  }
+
+  const highlightsResult = await getHighlights(videoResult.transcript);
+
+  if (isErrorResponse(highlightsResult)) {
+    return {
+      success: false,
+      error: {
+        error: true,
+        reason: highlightsResult.reason,
+        code: highlightsResult.code,
+      },
+    };
+  }
+
+  return {
+    success: true,
+    video: videoResult,
+    highlights: highlightsResult,
+  };
+}
+
+export type QaPipelineResult =
+  | {
+      success: true;
+      video: VideoData;
+      answer: string;
+    }
+  | {
+      success: false;
+      error: ErrorResponse;
+    };
+
+export async function runQaPipeline(
+  url: string,
+  question: string,
+): Promise<QaPipelineResult> {
+  const videoResult = await getVideoData(url);
+
+  if (isErrorResponse(videoResult)) {
+    return {
+      success: false,
+      error: {
+        error: true,
+        reason: videoResult.reason,
+        code: videoResult.code,
+      },
+    };
+  }
+
+  const qaResult = await askQuestion(videoResult.transcript, question);
+
+  if (isErrorResponse(qaResult)) {
+    return {
+      success: false,
+      error: {
+        error: true,
+        reason: qaResult.reason,
+        code: qaResult.code,
+      },
+    };
+  }
+
+  return {
+    success: true,
+    video: videoResult,
+    answer: qaResult.answer,
   };
 }

@@ -19,8 +19,13 @@ config({ path: resolve(__dirname, "../../.env") });
 
 import { Bot, type Context } from "grammy";
 import { handleMessage } from "./handlers/message.js";
+import { handleSearch, handleSearchCallback } from "./handlers/search.js";
+import { handleDownloadCallback } from "./handlers/download.js";
 import {
   handleSummarize,
+  handleMp3,
+  handleMp4,
+  handleHighlights,
   handleStats,
   handleBroadcast,
 } from "./handlers/commands.js";
@@ -83,8 +88,16 @@ bot.on("message:text", handleMessage);
 
 // Command handlers
 bot.command("summarize", handleSummarize);
+bot.command("mp3", handleMp3);
+bot.command("mp4", handleMp4);
+bot.command("highlights", handleHighlights);
+bot.command("search", handleSearch);
 bot.command("stats", handleStats);
 bot.command("broadcast", handleBroadcast);
+
+// Callback query handlers — search result selection + download buttons
+bot.on("callback_query:data", handleSearchCallback);
+bot.on("callback_query:data", handleDownloadCallback);
 
 // ---------------------------------------------------------------------------
 // Start polling

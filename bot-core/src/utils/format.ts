@@ -5,7 +5,7 @@
 // contract — structured data lives in the AI layer, display lives here).
 // =============================================================================
 
-import type { VideoData, SummaryResult } from "../types/index.js";
+import type { VideoData, SummaryResult, HighlightsResult, QnAResult } from "../types/index.js";
 
 // ---------------------------------------------------------------------------
 // Markdown escaping helpers
@@ -109,4 +109,72 @@ export function formatErrorMessage(reason: string, code?: string): string {
   }
 
   return lines.join("\n");
+}
+
+/**
+ * Format a highlights result into a YouTube-chapter-style message.
+ *
+ * @param video    - VideoData from the extraction layer
+ * @param highlights - HighlightsResult with timestamped moments
+ * @returns A formatted string ready to send via bot.api.sendMessage()
+ */
+export function formatHighlightsMessage(
+  video: VideoData,
+  highlights: HighlightsResult
+): string {
+  const hours = Math.floor(video.duration_seconds / 3600);
+  const remaining = video.duration_seconds % 3600;
+  const minutes = Math.floor(remaining / 60);
+  const seconds = remaining % 60;
+  const durationStr =
+    hours > 0
+      ? `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`
+      : `${minutes}:${seconds.toString().padStart(2, "0")}`;
+
+  const viewsStr = video.view_count.toLocaleString();
+
+  const safeTitle = escapeMarkdown(video.title);
+  const safeChannel = escapeMarkdown(video.channel);
+  const safeDuration = escapeMarkdown(durationStr);
+  const safeViews = escapeMarkdown(viewsStr);
+
+  const chapterLines = highlights.highlights.map((h) => {
+    const hh = Math.floor(h.timestamp / 3600);
+    const mm = Math.floor((h.timestamp % 3600) / 60);
+    const ss = Math.floor(h.timestamp % 60);
+    const ts = hh > 0
+      ? `${hh}:${mm.toString().padStart(2, "0")}:${ss.toString().padStart(2, "0")}`
+      : `${mm}:${ss.toString().padStart(2, "0")}`;
+    const safeDesc = escapeMarkdown(h.description);
+    return `*${escapeMarkdown(ts)}* — ${safeDesc}`;
+  }).join("\n");
+
+  return [
+    `*${safeTitle}*`,
+    `📺 ${safeChannel}  ·  ${safeDuration}  ·  ${safeViews} views`,
+    "",
+    "🎯 *Key Moments*",
+    "",
+    chapterLines,
+  ].join("\n");
+}
+
+/**
+ * Format a Q&A result into a Telegram-friendly message.
+ */
+export function formatQaMessage(
+  video: VideoData,
+  question: string,
+  answer: string,
+): string {
+  const safeTitle = escapeMarkdown(video.title);
+  const safeQ = escapeMarkdown(question);
+  const safeA = escapeMarkdown(answer);
+
+  return [
+    `*${safeTitle}*`,
+    "",
+    `*Q:* ${safeQ}`,
+    `*A:* ${safeA}`,
+  ].join("\n");
 }

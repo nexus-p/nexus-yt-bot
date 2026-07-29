@@ -12,25 +12,38 @@
 // =============================================================================
 
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
 import type { Api } from "grammy";
-import { runPipeline, type PipelineResult } from "./pipeline.js";
+import { InlineKeyboard, InputFile } from "grammy";
+import { runPipeline, runHighlightsPipeline, runQaPipeline, type PipelineResult } from "./pipeline.js";
+import { downloadVideo } from "@nexus-p/extraction";
 import {
+  escapeMarkdown,
   formatSuccessMessage,
+  formatHighlightsMessage,
+  formatQaMessage,
   formatErrorMessage,
 } from "../utils/format.js";
+import { setMessageContext } from "./messageContext.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export type JobInputType = "url" | "search_selection";
+export type JobCommand = "summarize" | "highlights" | "qa" | "audio" | "video";
 
 export interface JobInput {
   type: JobInputType;
   value: string;
+  command?: JobCommand;
+  /** Question for Q&A jobs (reply-to-bot-message flow) */
+  question?: string;
   /** Optional note appended to the result (e.g. multi-URL warning) */
   extraNote?: string;
 }
+
+const VIDEO_ID_REGEX = /[a-zA-Z0-9_-]{11}/;
 
 export type JobStatus = "queued" | "processing" | "done" | "failed";
 
@@ -184,70 +197,16 @@ async function processQueue(): Promise<void> {
     job.status = "processing";
     console.log(`[jobQueue] Processing job ${job.id} for user ${job.userId}`);
 
-    // Update the status message to reflect actual processing
-    if (botApi && job.statusMsgId) {
-      try {
-        await botApi.editMessageText(
-          job.chatId,
-          job.statusMsgId,
-          "⏳ Now processing your video...",
-        );
-      } catch {
-        // Status message may have been deleted by the user — non-critical
-      }
-    }
+    const command = job.input.command ?? "summarize";
 
-    // ── Execute the pipeline ──
-    const result = await runPipeline(job.input.value);
-
-    // ── Handle result ──
-    job.result = result;
-
-    if (result.success) {
-      job.status = "done";
-      console.log(`[jobQueue] Job ${job.id} completed successfully`);
-
-      if (botApi) {
-        const text =
-          formatSuccessMessage(result.video, result.summary) +
-          (job.input.extraNote ?? "");
-
-        // Delete the status message
-        if (job.statusMsgId) {
-          try {
-            await botApi.deleteMessage(job.chatId, job.statusMsgId);
-          } catch { /* non-critical */ }
-        }
-
-        // Send the result
-        try {
-          await botApi.sendMessage(job.chatId, text, {
-            parse_mode: "MarkdownV2",
-          });
-        } catch {
-          // Markdown parse failure — resend as plain text
-          await botApi.sendMessage(job.chatId, text);
-        }
-      }
+    if (command === "audio" || command === "video") {
+      await processDownload(job, command);
+    } else if (command === "highlights") {
+      await processHighlightsPipeline(job);
+    } else if (command === "qa") {
+      await processQaPipeline(job);
     } else {
-      job.status = "failed";
-      console.log(`[jobQueue] Job ${job.id} failed: ${result.error.reason}`);
-
-      if (botApi) {
-        const text =
-          formatErrorMessage(result.error.reason, result.error.code) +
-          (job.input.extraNote ?? "");
-
-        if (job.statusMsgId) {
-          try {
-            await botApi.deleteMessage(job.chatId, job.statusMsgId);
-          } catch { /* non-critical */ }
-        }
-
-        await botApi.sendMessage(job.chatId, text, {
-          parse_mode: "MarkdownV2",
-        });
-      }
+      await processPipeline(job);
     }
   } catch (err) {
     // ── Unhandled crash — job failed fatally ──
@@ -275,5 +234,283 @@ async function processQueue(): Promise<void> {
         userActiveJobs.delete(job.userId);
       }
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Download processor — yt-dlp → send file
+// ---------------------------------------------------------------------------
+
+async function processDownload(job: Job, mode: "audio" | "video"): Promise<void> {
+  if (!botApi) return;
+
+  const videoId = job.input.value.match(VIDEO_ID_REGEX)?.[0];
+  if (!videoId) {
+    job.status = "failed";
+    job.error = "Invalid YouTube URL — could not extract video ID";
+    await botApi.sendMessage(
+      job.chatId,
+      "⚠️ Invalid YouTube URL\\. Could not extract a video ID from that link\\.",
+      { parse_mode: "MarkdownV2" },
+    );
+    return;
+  }
+
+  // Update status
+  if (job.statusMsgId) {
+    try {
+      await botApi.editMessageText(job.chatId, job.statusMsgId, "⏳ Downloading...");
+    } catch { /* non-critical */ }
+  }
+
+  try {
+    console.log(`[jobQueue] Starting ${mode} download for video ${videoId}`);
+    const filePath = await downloadVideo(videoId, mode);
+
+    // Delete status message before sending the file
+    if (job.statusMsgId) {
+      try {
+        await botApi.deleteMessage(job.chatId, job.statusMsgId);
+      } catch { /* non-critical */ }
+    }
+
+    if (mode === "audio") {
+      await botApi.sendAudio(job.chatId, new InputFile(filePath));
+    } else {
+      await botApi.sendVideo(job.chatId, new InputFile(filePath));
+    }
+
+    // Clean up temp file
+    try { fs.unlinkSync(filePath); } catch { /* non-critical */ }
+
+    job.status = "done";
+    console.log(`[jobQueue] Job ${job.id} completed (${mode})`);
+  } catch (err) {
+    job.status = "failed";
+    job.error = err instanceof Error ? err.message : String(err);
+    console.error(`[jobQueue] Job ${job.id} download failed:`, job.error);
+
+    if (job.statusMsgId) {
+      try {
+        await botApi.deleteMessage(job.chatId, job.statusMsgId);
+      } catch { /* non-critical */ }
+    }
+    await botApi.sendMessage(
+      job.chatId,
+      `⚠️ Download failed: ${escapeMarkdown(job.error)}`,
+      { parse_mode: "MarkdownV2" },
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// AI pipeline processor — extract → summarize → formatted response
+// ---------------------------------------------------------------------------
+
+async function processPipeline(job: Job): Promise<void> {
+  if (!botApi) return;
+
+  // Update the status message to reflect actual processing
+  if (job.statusMsgId) {
+    try {
+      await botApi.editMessageText(
+        job.chatId,
+        job.statusMsgId,
+        "⏳ Now processing your video...",
+      );
+    } catch {
+      // Status message may have been deleted by the user — non-critical
+    }
+  }
+
+  // ── Execute the pipeline ──
+  const result = await runPipeline(job.input.value);
+
+  // ── Handle result ──
+  job.result = result;
+
+  if (result.success) {
+    job.status = "done";
+    console.log(`[jobQueue] Job ${job.id} completed successfully`);
+
+    const text =
+      formatSuccessMessage(result.video, result.summary) +
+      (job.input.extraNote ?? "");
+
+    // Build audio/video download buttons
+    const videoId = job.input.value.match(VIDEO_ID_REGEX)?.[0];
+    let replyMarkup: InlineKeyboard | undefined;
+    if (videoId) {
+      replyMarkup = new InlineKeyboard()
+        .text("🎧 Download Audio", `dl:audio:${videoId}`)
+        .text("🎥 Download Video", `dl:video:${videoId}`);
+    }
+
+    // Delete the status message
+    if (job.statusMsgId) {
+      try {
+        await botApi.deleteMessage(job.chatId, job.statusMsgId);
+      } catch { /* non-critical */ }
+    }
+
+    // Send the result
+    try {
+      const sent = await botApi.sendMessage(job.chatId, text, {
+        parse_mode: "MarkdownV2",
+        reply_markup: replyMarkup,
+      });
+      setMessageContext(sent.message_id, {
+        url: job.input.value,
+        title: result.video.title,
+      });
+    } catch {
+      const sent = await botApi.sendMessage(job.chatId, text, {
+        reply_markup: replyMarkup,
+      });
+      setMessageContext(sent.message_id, {
+        url: job.input.value,
+        title: result.video.title,
+      });
+    }
+  } else {
+    job.status = "failed";
+    console.log(`[jobQueue] Job ${job.id} failed: ${result.error.reason}`);
+
+    const text =
+      formatErrorMessage(result.error.reason, result.error.code) +
+      (job.input.extraNote ?? "");
+
+    if (job.statusMsgId) {
+      try {
+        await botApi.deleteMessage(job.chatId, job.statusMsgId);
+      } catch { /* non-critical */ }
+    }
+
+    await botApi.sendMessage(job.chatId, text, {
+      parse_mode: "MarkdownV2",
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Highlights pipeline processor — extract → getHighlights → formatted response
+// ---------------------------------------------------------------------------
+
+async function processHighlightsPipeline(job: Job): Promise<void> {
+  if (!botApi) return;
+
+  if (job.statusMsgId) {
+    try {
+      await botApi.editMessageText(
+        job.chatId,
+        job.statusMsgId,
+        "⏳ Extracting key moments...",
+      );
+    } catch { /* non-critical */ }
+  }
+
+  const result = await runHighlightsPipeline(job.input.value);
+
+  if (result.success) {
+    job.status = "done";
+    console.log(`[jobQueue] Job ${job.id} highlights completed`);
+
+    const text = formatHighlightsMessage(result.video, result.highlights) +
+      (job.input.extraNote ?? "");
+
+    if (job.statusMsgId) {
+      try {
+        await botApi.deleteMessage(job.chatId, job.statusMsgId);
+      } catch { /* non-critical */ }
+    }
+
+    try {
+      const sent = await botApi.sendMessage(job.chatId, text, { parse_mode: "MarkdownV2" });
+      setMessageContext(sent.message_id, {
+        url: job.input.value,
+        title: result.video.title,
+      });
+    } catch {
+      const sent = await botApi.sendMessage(job.chatId, text);
+      setMessageContext(sent.message_id, {
+        url: job.input.value,
+        title: result.video.title,
+      });
+    }
+  } else {
+    job.status = "failed";
+    console.log(`[jobQueue] Job ${job.id} highlights failed: ${result.error.reason}`);
+
+    const text = formatErrorMessage(result.error.reason, result.error.code) +
+      (job.input.extraNote ?? "");
+
+    if (job.statusMsgId) {
+      try {
+        await botApi.deleteMessage(job.chatId, job.statusMsgId);
+      } catch { /* non-critical */ }
+    }
+
+    await botApi.sendMessage(job.chatId, text, { parse_mode: "MarkdownV2" });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Q&A pipeline processor — extract → askQuestion → formatted response
+// ---------------------------------------------------------------------------
+
+async function processQaPipeline(job: Job): Promise<void> {
+  if (!botApi) return;
+
+  if (job.statusMsgId) {
+    try {
+      await botApi.editMessageText(
+        job.chatId,
+        job.statusMsgId,
+        "⏳ Answering your question...",
+      );
+    } catch { /* non-critical */ }
+  }
+
+  const question = job.input.question;
+  if (!question) {
+    job.status = "failed";
+    job.error = "No question provided";
+    if (job.statusMsgId) {
+      try { await botApi.deleteMessage(job.chatId, job.statusMsgId); } catch {}
+    }
+    await botApi.sendMessage(job.chatId, "⚠️ No question provided for Q&A.");
+    return;
+  }
+
+  const result = await runQaPipeline(job.input.value, question);
+
+  if (result.success) {
+    job.status = "done";
+    console.log(`[jobQueue] Job ${job.id} Q&A completed`);
+
+    const text = formatQaMessage(result.video, question, result.answer) +
+      (job.input.extraNote ?? "");
+
+    if (job.statusMsgId) {
+      try { await botApi.deleteMessage(job.chatId, job.statusMsgId); } catch {}
+    }
+
+    try {
+      await botApi.sendMessage(job.chatId, text, { parse_mode: "MarkdownV2" });
+    } catch {
+      await botApi.sendMessage(job.chatId, text);
+    }
+  } else {
+    job.status = "failed";
+    console.log(`[jobQueue] Job ${job.id} Q&A failed: ${result.error.reason}`);
+
+    const text = formatErrorMessage(result.error.reason, result.error.code) +
+      (job.input.extraNote ?? "");
+
+    if (job.statusMsgId) {
+      try { await botApi.deleteMessage(job.chatId, job.statusMsgId); } catch {}
+    }
+
+    await botApi.sendMessage(job.chatId, text, { parse_mode: "MarkdownV2" });
   }
 }

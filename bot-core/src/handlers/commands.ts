@@ -47,7 +47,6 @@ export async function handleSummarize(ctx: Context): Promise<void> {
     return;
   }
 
-  // Extract argument: everything after "/summarize "
   const text = ctx.message?.text ?? "";
   const arg = text.slice("/summarize".length).trim();
 
@@ -60,14 +59,7 @@ export async function handleSummarize(ctx: Context): Promise<void> {
     return;
   }
 
-  // Try to match as a full URL first
-  let url = arg.match(YOUTUBE_URL_PATTERN)?.[0] ?? null;
-
-  // If no full URL match, check if the arg is just a bare video ID
-  if (!url && YOUTUBE_ID_PATTERN.test(arg)) {
-    url = `https://youtube.com/watch?v=${arg}`;
-  }
-
+  const url = extractUrlFromArg(arg);
   if (!url) {
     await ctx.reply(
       "Usage: /summarize <youtube_url\\>\n\n" +
@@ -89,6 +81,191 @@ export async function handleSummarize(ctx: Context): Promise<void> {
     input: {
       type: "url",
       value: url,
+    },
+  });
+}
+
+// =========================================================================
+// /mp3 <youtube_url> — download audio only, no summary
+// =========================================================================
+
+function extractUrlFromArg(arg: string): string | null {
+  let url = arg.match(YOUTUBE_URL_PATTERN)?.[0] ?? null;
+  if (!url && YOUTUBE_ID_PATTERN.test(arg)) {
+    url = `https://youtube.com/watch?v=${arg}`;
+  }
+  return url;
+}
+
+export async function handleMp3(ctx: Context): Promise<void> {
+  console.log("[cmd] /mp3 from user", ctx.from?.id);
+  recordUser(ctx);
+  const userId = ctx.from?.id;
+  if (!userId) return;
+  if (!ctx.chat) return;
+
+  const rateCheck = checkRateLimit(userId);
+  if (!rateCheck.allowed) {
+    await ctx.reply(`⏳ You're doing that too fast — try again in ${rateCheck.retryAfterSeconds} seconds.`);
+    return;
+  }
+
+  const activeJob = getUserActiveJob(userId);
+  if (activeJob) {
+    await ctx.reply("⏳ You already have a request processing — please wait for it to finish before sending another.");
+    return;
+  }
+
+  const text = ctx.message?.text ?? "";
+  const arg = text.slice("/mp3".length).trim();
+
+  if (!arg) {
+    await ctx.reply(
+      "Usage: /mp3 <youtube_url\\>\n\n" +
+      "_Example:_ `/mp3 https://youtube.com/watch?v=dQw4w9WgXcQ`",
+      { parse_mode: "MarkdownV2" }
+    );
+    return;
+  }
+
+  const url = extractUrlFromArg(arg);
+  if (!url) {
+    await ctx.reply(
+      "Usage: /mp3 <youtube_url\\>\n\n" +
+      "_Example:_ `/mp3 https://youtube.com/watch?v=dQw4w9WgXcQ`",
+      { parse_mode: "MarkdownV2" }
+    );
+    return;
+  }
+
+  const statusMsg = await ctx.reply("⏳ Your request has been queued and will be processed shortly.");
+
+  enqueueJob({
+    userId,
+    chatId: ctx.chat.id,
+    statusMsgId: statusMsg.message_id,
+    input: {
+      type: "url",
+      value: url,
+      command: "audio",
+    },
+  });
+}
+
+// =========================================================================
+// /mp4 <youtube_url> — download video, no summary
+// =========================================================================
+
+export async function handleMp4(ctx: Context): Promise<void> {
+  console.log("[cmd] /mp4 from user", ctx.from?.id);
+  recordUser(ctx);
+  const userId = ctx.from?.id;
+  if (!userId) return;
+  if (!ctx.chat) return;
+
+  const rateCheck = checkRateLimit(userId);
+  if (!rateCheck.allowed) {
+    await ctx.reply(`⏳ You're doing that too fast — try again in ${rateCheck.retryAfterSeconds} seconds.`);
+    return;
+  }
+
+  const activeJob = getUserActiveJob(userId);
+  if (activeJob) {
+    await ctx.reply("⏳ You already have a request processing — please wait for it to finish before sending another.");
+    return;
+  }
+
+  const text = ctx.message?.text ?? "";
+  const arg = text.slice("/mp4".length).trim();
+
+  if (!arg) {
+    await ctx.reply(
+      "Usage: /mp4 <youtube_url\\>\n\n" +
+      "_Example:_ `/mp4 https://youtube.com/watch?v=dQw4w9WgXcQ`",
+      { parse_mode: "MarkdownV2" }
+    );
+    return;
+  }
+
+  const url = extractUrlFromArg(arg);
+  if (!url) {
+    await ctx.reply(
+      "Usage: /mp4 <youtube_url\\>\n\n" +
+      "_Example:_ `/mp4 https://youtube.com/watch?v=dQw4w9WgXcQ`",
+      { parse_mode: "MarkdownV2" }
+    );
+    return;
+  }
+
+  const statusMsg = await ctx.reply("⏳ Your request has been queued and will be processed shortly.");
+
+  enqueueJob({
+    userId,
+    chatId: ctx.chat.id,
+    statusMsgId: statusMsg.message_id,
+    input: {
+      type: "url",
+      value: url,
+      command: "video",
+    },
+  });
+}
+
+// =========================================================================
+// /highlights <youtube_url> — extract key moments with timestamps
+// =========================================================================
+
+export async function handleHighlights(ctx: Context): Promise<void> {
+  console.log("[cmd] /highlights from user", ctx.from?.id);
+  recordUser(ctx);
+  const userId = ctx.from?.id;
+  if (!userId) return;
+  if (!ctx.chat) return;
+
+  const rateCheck = checkRateLimit(userId);
+  if (!rateCheck.allowed) {
+    await ctx.reply(`⏳ You're doing that too fast — try again in ${rateCheck.retryAfterSeconds} seconds.`);
+    return;
+  }
+
+  const activeJob = getUserActiveJob(userId);
+  if (activeJob) {
+    await ctx.reply("⏳ You already have a request processing — please wait for it to finish before sending another.");
+    return;
+  }
+
+  const text = ctx.message?.text ?? "";
+  const arg = text.slice("/highlights".length).trim();
+
+  if (!arg) {
+    await ctx.reply(
+      "Usage: /highlights <youtube_url\\>\n\n" +
+      "_Example:_ `/highlights https://youtube.com/watch?v=dQw4w9WgXcQ`",
+      { parse_mode: "MarkdownV2" }
+    );
+    return;
+  }
+
+  const url = extractUrlFromArg(arg);
+  if (!url) {
+    await ctx.reply(
+      "Usage: /highlights <youtube_url\\>\n\n" +
+      "_Example:_ `/highlights https://youtube.com/watch?v=dQw4w9WgXcQ`",
+      { parse_mode: "MarkdownV2" }
+    );
+    return;
+  }
+
+  const statusMsg = await ctx.reply("⏳ Your request has been queued and will be processed shortly.");
+
+  enqueueJob({
+    userId,
+    chatId: ctx.chat.id,
+    statusMsgId: statusMsg.message_id,
+    input: {
+      type: "url",
+      value: url,
+      command: "highlights",
     },
   });
 }

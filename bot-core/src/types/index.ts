@@ -44,6 +44,27 @@ export interface SummaryResult {
 export type SummarizeInput = TranscriptSegment[];
 
 // ---------------------------------------------------------------------------
+// Section 2b: getHighlights() return shape
+// ---------------------------------------------------------------------------
+
+export interface Highlight {
+  timestamp: number;
+  description: string;
+}
+
+export interface HighlightsResult {
+  highlights: Highlight[];
+}
+
+// ---------------------------------------------------------------------------
+// Section 2c: askQuestion() return shape
+// ---------------------------------------------------------------------------
+
+export interface QnAResult {
+  answer: string;
+}
+
+// ---------------------------------------------------------------------------
 // Section 4: Error shape  (any failing module)
 // ---------------------------------------------------------------------------
 
