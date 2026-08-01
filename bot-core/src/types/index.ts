@@ -48,8 +48,9 @@ export type SummarizeInput = TranscriptSegment[];
 // ---------------------------------------------------------------------------
 
 export interface Highlight {
-  timestamp: number;
-  description: string;
+  title: string;
+  start: number;  // seconds
+  end: number;    // seconds
 }
 
 export interface HighlightsResult {

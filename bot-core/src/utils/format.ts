@@ -139,13 +139,13 @@ export function formatHighlightsMessage(
   const safeViews = escapeMarkdown(viewsStr);
 
   const chapterLines = highlights.highlights.map((h) => {
-    const hh = Math.floor(h.timestamp / 3600);
-    const mm = Math.floor((h.timestamp % 3600) / 60);
-    const ss = Math.floor(h.timestamp % 60);
+    const hh = Math.floor(h.start / 3600);
+    const mm = Math.floor((h.start % 3600) / 60);
+    const ss = Math.floor(h.start % 60);
     const ts = hh > 0
       ? `${hh}:${mm.toString().padStart(2, "0")}:${ss.toString().padStart(2, "0")}`
       : `${mm}:${ss.toString().padStart(2, "0")}`;
-    const safeDesc = escapeMarkdown(h.description);
+    const safeDesc = escapeMarkdown(h.title);
     return `*${escapeMarkdown(ts)}* — ${safeDesc}`;
   }).join("\n");
 
