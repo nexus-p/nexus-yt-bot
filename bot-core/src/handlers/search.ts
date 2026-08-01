@@ -9,7 +9,6 @@ import type { Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import { searchVideos } from "@nexus-p/extraction";
 import { enqueueJob, getUserActiveJob } from "../services/jobQueue.js";
-import { escapeMarkdown } from "../utils/format.js";
 import { checkRateLimit } from "../utils/rateLimit.js";
 import { recordUser } from "../db/index.js";
 
@@ -22,7 +21,7 @@ interface PendingSearchSelection {
   results: { title: string; video_id: string }[];
   chatId: number;
   searchMsgId: number;
-  timestamp: number;
+  expiresAt: number;
 }
 
 const pendingSearchSelections = new Map<number, PendingSearchSelection>();
@@ -31,11 +30,11 @@ const PENDING_TTL = 5 * 60 * 1000;
 setInterval(() => {
   const now = Date.now();
   for (const [userId, entry] of pendingSearchSelections) {
-    if (now - entry.timestamp > PENDING_TTL) {
+    if (now > entry.expiresAt) {
       pendingSearchSelections.delete(userId);
     }
   }
-}, 60_000).unref();
+}, PENDING_TTL).unref();
 
 // =========================================================================
 // /search <query>
@@ -56,9 +55,8 @@ export async function handleSearch(ctx: Context): Promise<void> {
 
   if (!query) {
     await ctx.reply(
-      "Usage: /search <query\\>\n\n" +
-      "_Example:_ `/search Node js tutorial 2025`",
-      { parse_mode: "MarkdownV2" }
+      "Usage: /search query words\n\n" +
+      "Example: /search Node js tutorial 2025"
     );
     return;
   }
@@ -84,7 +82,7 @@ export async function handleSearch(ctx: Context): Promise<void> {
   try {
     const results = await searchVideos(query);
     if (results.length === 0) {
-      await ctx.reply("No videos found for that query \\- try different keywords\\.");
+      await ctx.reply("No videos found for that search — try different words.");
       return;
     }
 
@@ -98,12 +96,9 @@ export async function handleSearch(ctx: Context): Promise<void> {
     });
 
     const searchMsg = await ctx.reply(
-      "🔍 *Search results* — tap a video to summarize:\n\n" +
-      displayResults.map((r, i) =>
-        `${i + 1}\\. [${escapeMarkdown(r.title)}](https://youtube.com/watch?v=${r.video_id})`
-      ).join("\n"),
+      "🔍 Search results — tap a video to summarize:\n\n" +
+      displayResults.map((r, i) => `${i + 1}. ${r.title}`).join("\n"),
       {
-        parse_mode: "MarkdownV2",
         reply_markup: keyboard,
       }
     );
@@ -112,7 +107,7 @@ export async function handleSearch(ctx: Context): Promise<void> {
       results: displayResults,
       chatId: ctx.chat.id,
       searchMsgId: searchMsg.message_id,
-      timestamp: Date.now(),
+      expiresAt: Date.now() + PENDING_TTL,
     });
   } catch (err) {
     console.error("[bot-core] /search failed:", err);
@@ -136,7 +131,7 @@ export async function handleSearchCallback(ctx: Context): Promise<void> {
 
   const pending = pendingSearchSelections.get(userId);
   if (!pending) {
-    await ctx.answerCallbackQuery({ text: "This search has expired — send /search to try again." });
+    await ctx.answerCallbackQuery({ text: "This search has expired, please search again." });
     return;
   }
 

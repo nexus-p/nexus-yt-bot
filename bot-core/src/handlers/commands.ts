@@ -121,9 +121,8 @@ export async function handleMp3(ctx: Context): Promise<void> {
 
   if (!arg) {
     await ctx.reply(
-      "Usage: /mp3 <youtube_url\\>\n\n" +
-      "_Example:_ `/mp3 https://youtube.com/watch?v=dQw4w9WgXcQ`",
-      { parse_mode: "MarkdownV2" }
+      "Usage: /mp3 youtube_url\n\n" +
+      "Example: /mp3 https://youtube.com/watch?v=dQw4w9WgXcQ"
     );
     return;
   }
@@ -131,9 +130,8 @@ export async function handleMp3(ctx: Context): Promise<void> {
   const url = extractUrlFromArg(arg);
   if (!url) {
     await ctx.reply(
-      "Usage: /mp3 <youtube_url\\>\n\n" +
-      "_Example:_ `/mp3 https://youtube.com/watch?v=dQw4w9WgXcQ`",
-      { parse_mode: "MarkdownV2" }
+      "Usage: /mp3 youtube_url\n\n" +
+      "Example: /mp3 https://youtube.com/watch?v=dQw4w9WgXcQ"
     );
     return;
   }
@@ -180,9 +178,8 @@ export async function handleMp4(ctx: Context): Promise<void> {
 
   if (!arg) {
     await ctx.reply(
-      "Usage: /mp4 <youtube_url\\>\n\n" +
-      "_Example:_ `/mp4 https://youtube.com/watch?v=dQw4w9WgXcQ`",
-      { parse_mode: "MarkdownV2" }
+      "Usage: /mp4 youtube_url\n\n" +
+      "Example: /mp4 https://youtube.com/watch?v=dQw4w9WgXcQ"
     );
     return;
   }
@@ -190,9 +187,8 @@ export async function handleMp4(ctx: Context): Promise<void> {
   const url = extractUrlFromArg(arg);
   if (!url) {
     await ctx.reply(
-      "Usage: /mp4 <youtube_url\\>\n\n" +
-      "_Example:_ `/mp4 https://youtube.com/watch?v=dQw4w9WgXcQ`",
-      { parse_mode: "MarkdownV2" }
+      "Usage: /mp4 youtube_url\n\n" +
+      "Example: /mp4 https://youtube.com/watch?v=dQw4w9WgXcQ"
     );
     return;
   }
