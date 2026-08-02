@@ -1,6 +1,10 @@
 import { Innertube } from "youtubei.js";
 import type { VideoData } from "./types.js";
 
+// Different Innertube clients return different response shapes — a node that
+// crashes the parser under one client is often harmless under another.
+// Trying a few in order maximizes the chance of pulling clean title/author.
+const CLIENT_FALLBACKS = ["ANDROID", "TV_EMBEDDED", "MWEB"] as const;
 
 export async function getMetadata(
   videoId: string
@@ -8,37 +12,71 @@ export async function getMetadata(
 
   const youtube = await Innertube.create();
 
-  // Use getBasicInfo() instead of getInfo() to avoid a known youtubei.js bug
-  // where parsing VideoTitleHeaderView in the watch_next response throws a
-  // ParsingError. getBasicInfo() only fetches the watch endpoint (skipping
-  // the description/engagement panel section that crashes), which is
-  // sufficient for all metadata fields we need.
-  let info;
-  try {
+  let resolved: "default" | "fallback" | "none" = "none";
+  const tried: string[] = [];
+
+  // 1) Default client (WEB) — the previously-crashing watch_next path is
+  //    skipped entirely by getBasicInfo(), but some videos can still throw a
+  //    different ParsingError here. If so, fall back to other clients.
+  let info: any = undefined;
+  for (const client of [undefined, ...CLIENT_FALLBACKS] as const) {
+    const label = client ?? "WEB(default)";
+    tried.push(label);
     const t0 = Date.now();
-    info = await youtube.getBasicInfo(videoId);
-    console.log(`[timing] youtube.getBasicInfo: ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-  } catch (err: any) {
-    // If getBasicInfo also fails (e.g. a different parser issue), log it
-    // clearly as a known youtubei.js bug and return what we can.
-    const isParserError = err?.type === "ParsingError" || err?.message?.includes?.("ParsingError");
-    if (isParserError) {
-      console.warn(
-        `[extraction] Known youtubei.js parser bug for ${videoId}: ` +
-        `${err.message}. Returning partial metadata.`
-      );
-    } else {
-      throw err;
+    try {
+      info = client
+        ? await youtube.getBasicInfo(videoId, { client })
+        : await youtube.getBasicInfo(videoId);
+      console.log(`[timing] youtube.getBasicInfo (${label}): ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+      resolved = tried.length === 1 ? "default" : "fallback";
+      break;
+    } catch (err: any) {
+      const isParserError = err?.type === "ParsingError" || err?.message?.includes?.("ParsingError");
+      if (isParserError) {
+        console.warn(
+          `[extraction] Known youtubei.js parser bug for ${videoId} on client ${label}: ` +
+          `${err.message}`
+        );
+      } else {
+        console.warn(
+          `[extraction] getBasicInfo failed for ${videoId} on client ${label}: ` +
+          `${err?.message ?? err}`
+        );
+      }
+      info = undefined;
     }
+  }
+
+  if (!info) {
+    console.warn(
+      `[extraction] Metadata unavailable for ${videoId} — all Innertube clients failed (tried: ${tried.join(", ")})`
+    );
     return {};
   }
 
+  if (!info.basic_info) info.basic_info = {};
+
+  const present: Record<string, boolean> = {
+    title: !!info.basic_info.title,
+    author: !!info.basic_info.author,
+    duration: !!info.basic_info.duration,
+    description: !!info.basic_info.short_description,
+    thumbnail: !!info.basic_info.thumbnail?.[0]?.url,
+    views: !!info.basic_info.view_count,
+    published: !!info.primary_info?.published?.text,
+  };
+  console.log(
+    `[extraction] Fields parsed for ${videoId}: ` +
+    Object.entries(present).filter(([, v]) => v).map(([k]) => k).join(", ") +
+    ` (resolved via ${resolved})`
+  );
+
   // Log a warning if title or author is missing — a real video should have both
-  if (!info.basic_info.title || !info.basic_info.author) {
+  if (!present.title || !present.author) {
     console.warn(
-      `[extraction] Metadata incomplete for ${videoId}: ` +
-      `title=${!!info.basic_info.title}, ` +
-      `author=${!!info.basic_info.author}`
+      `[extraction] Metadata incomplete for ${videoId} (resolved via ${resolved}): ` +
+      `title=${present.title}, ` +
+      `author=${present.author}`
     );
   }
 
