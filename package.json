@@ -2,10 +2,15 @@
   "name": "nexus-yt-bot",
   "version": "0.1.0",
   "private": true,
-  "workspaces": ["bot-core", "extraction", "ai-summarization"],
+  "workspaces": [
+    "bot-core",
+    "extraction",
+    "ai-summarization"
+  ],
   "scripts": {
     "dev": "npm run dev --workspace=bot-core",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "build": "npm run build --workspaces --if-present"
-  }
+  },
+  "license": "AGPL-3.0"
 }

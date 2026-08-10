@@ -9,16 +9,17 @@ This bot is designed to run on a **Pterodactyl panel** (or any Linux VM with Nod
 In the Pterodactyl egg's **Startup Command** field, point at the startup script:
 
 ```
-bash scripts/pterodactyl-start.sh
+node start.js
 ```
 
-The script:
+The script (executed via `node`, zero runtime dependencies):
 
 1. Downloads **yt-dlp** to `./bin` if not already present (GitHub release)
 2. Downloads **ffmpeg** static binary to `./bin` if not already present (johnvansickle.com)
-3. Runs `npm install` across all workspace modules
-4. Builds all three workspaces in dependency order (extraction → ai-summarization → bot-core)
-5. Starts `bot-core/dist/index.js` via `node`
+3. Downloads **deno** to `./bin` if not already present — used by yt-dlp to solve YouTube's JS "n challenge" (arch-aware: x64/arm64, gnu/musl)
+4. Adds `./bin` to PATH
+5. Builds all three workspaces in dependency order (extraction → ai-summarization → bot-core)
+6. Starts `bot-core/dist/index.js` via `node`
 
 Subsequent restarts skip the binary downloads if they're already cached in `./bin`.
 
@@ -45,10 +46,15 @@ Both binaries are downloaded automatically on first run:
   - Verified via `--version` before each startup
   - Same download pattern as the Solus Rift worker (ytplay.js)
 
-- **ffmpeg** — static Linux x64 build from johnvansickle.com
+- **ffmpeg** — static Linux build from johnvansickle.com (arch-aware: x64/arm64)
   - Cached at `./bin/ffmpeg`
   - Only the `ffmpeg` binary is extracted (not ffprobe, etc.)
   - Verified via `-version` before each startup
+
+- **deno** — `https://github.com/denoland/deno/releases/latest/download/` (arch-aware: x64/arm64, gnu/musl)
+  - Cached at `./bin/deno`
+  - Solves YouTube's JS "n challenge" for yt-dlp format URL deciphering
+  - Verified via `--version` before each startup
 
 No manual binary installation is needed on the panel side. If a binary is corrupted or missing, the startup script re-downloads it automatically.
 
@@ -61,9 +67,8 @@ No manual binary installation is needed on the panel side. If a binary is corrup
 ├── ai-summarization/    ← Groq-powered summarization (imported, not standalone)
 ├── exports/             ← (on hold — not deployed)
 ├── docs/                ← Documentation
-├── scripts/
-│   └── pterodactyl-start.sh   ← Startup entry point
-├── bin/                 ← Auto-created on first run (yt-dlp, ffmpeg)
+├── start.js             ← Startup entry point (single file, zero deps)
+├── bin/                 ← Auto-created on first run (yt-dlp, ffmpeg, deno)
 ├── package.json         ← Root workspace config
 └── .env.example         ← Reference for all environment variables
 ```
